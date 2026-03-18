@@ -1,0 +1,1258 @@
+/**
+ * @description 商品详情页
+ * @author 前端开发团队
+ * @date 2025-11-22
+ */
+
+<template>
+  <view class="product-detail-page">
+    <!-- 内容区域 -->
+    <scroll-view scroll-y="true" class="product-detail__scroll">
+      <!-- 图片轮播 -->
+      <view class="product-detail__carousel">
+        <!-- 加载中状态 -->
+        <view v-if="productImages.length === 0" class="product-detail__loading">
+          <text class="loading-text">加载中...</text>
+        </view>
+        
+        <!-- 图片轮播 -->
+        <swiper
+          v-else
+          :current="currentImageIndex"
+          class="product-detail__swiper"
+          :circular="false"
+          :autoplay="false"
+          :interval="4000"
+          :duration="500"
+          @change="handleImageChange"
+        >
+          <swiper-item
+            v-for="(image, index) in productImages"
+            :key="image"
+            class="product-detail__swiper-item"
+            @click="previewImage(index)"
+          >
+            <image
+              :src="image"
+              class="product-detail__image"
+              mode="aspectFill"
+              :show-menu-by-longpress="true"
+            />
+          </swiper-item>
+        </swiper>
+
+        <!-- 轮播指示器 -->
+        <view v-if="productImages.length > 0" class="product-detail__image-indicator">
+          <text class="product-detail__indicator-text">{{ currentImageIndex + 1 }} / {{ productImages.length }}</text>
+        </view>
+      </view>
+
+      <!-- 商品基本信息 -->
+      <view class="product-detail__info-section">
+        <!-- 价格 -->
+        <view class="product-detail__price-row">
+          <view class="product-detail__price-group">
+            <text class="product-detail__currency">¥</text>
+            <text class="product-detail__current-price">{{ product.price }}</text>
+            <text v-if="product.originalPrice" class="product-detail__original-price">
+              ¥{{ product.originalPrice }}
+            </text>
+          </view>
+          <text class="product-detail__sales">
+            已售 {{ product.sales }} 件
+          </text>
+        </view>
+        
+        <!-- 优惠标签 -->
+        <view class="product-detail__tags-row" v-if="product.isNew || product.discount || product.isFresh">
+           <view v-if="product.discount" class="product-detail__tag product-detail__tag--discount">
+            <text class="product-detail__tag-text product-detail__tag-text--discount">省 ¥{{ getDiscountAmount() }}</text>
+          </view>
+          <view v-if="product.isNew" class="product-detail__tag product-detail__tag--new">
+              <text class="product-detail__tag-text product-detail__tag-text--new">新品</text>
+          </view>
+          <view v-if="product.isFresh" class="product-detail__tag product-detail__tag--fresh">
+              <text class="product-detail__tag-text product-detail__tag-text--fresh">新鲜</text>
+          </view>
+        </view>
+
+        <!-- 商品名称 -->
+        <text class="product-detail__name">{{ product.name }}</text>
+        
+        <!-- 简短描述 -->
+        <text class="product-detail__brief" v-if="product.description">
+          {{ product.description }}
+        </text>
+
+        <!-- 库存状态 -->
+        <view class="product-detail__meta-row">
+            <view class="product-detail__rating">
+                <text class="rating-star">⭐</text>
+                <text class="rating-score">{{ product.rating }}</text>
+                <text class="rating-count">({{ product.reviewCount }}条评价)</text>
+            </view>
+             <text :class="['product-detail__stock-status', { 'product-detail__stock-status--low': product.stock < 10 }]">
+                {{ product.stock > 0 ? `库存: ${product.stock}` : '暂时缺货' }}
+            </text>
+        </view>
+      </view>
+
+      <!-- 规格选择 -->
+      <view v-if="hasSpecs()" class="product-detail__section">
+        <view v-for="spec in product.specs" :key="spec.id" class="product-detail__spec-item">
+          <text class="product-detail__spec-label">{{ spec.name }}</text>
+          <view class="product-detail__spec-options">
+            <view
+              v-for="option in spec.options"
+              :key="option"
+              :class="['product-detail__spec-option', { 'product-detail__spec-option--selected': isSpecSelected(spec.id, option) }]"
+              @click="selectSpec(spec.id, option)"
+            >
+              <text :class="['product-detail__spec-text', { 'product-detail__spec-text--selected': isSpecSelected(spec.id, option) }]">{{ option }}</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 数量选择 (合并在规格区域) -->
+        <view class="product-detail__quantity-row">
+            <text class="product-detail__spec-label">数量</text>
+            <view class="product-detail__quantity-control">
+            <view
+                class="product-detail__quantity-btn"
+                :class="{'product-detail__quantity-btn--disabled': quantity <= 1}"
+                @click="decreaseQuantity"
+            >
+                <text class="product-detail__quantity-btn-text">－</text>
+            </view>
+            <view class="product-detail__quantity-input">
+                <text class="product-detail__quantity-input-text">{{ quantity }}</text>
+            </view>
+            <view
+                class="product-detail__quantity-btn"
+                :class="{'product-detail__quantity-btn--disabled': quantity >= product.stock}"
+                @click="increaseQuantity"
+            >
+                <text class="product-detail__quantity-btn-text">＋</text>
+            </view>
+            </view>
+        </view>
+      </view>
+
+      <!-- 评价区域 -->
+      <view class="product-detail__section product-detail__reviews-section">
+        <view class="product-detail__section-header" @click="viewAllReviews">
+          <view class="product-detail__section-title-box">
+             <text class="product-detail__section-title">用户评价</text>
+             <text class="title-count">({{ product.reviewCount }})</text>
+          </view>
+          
+          <view class="product-detail__section-more">
+            <text class="product-detail__section-more-text">好评度 {{ (product.rating / 5 * 100).toFixed(0) }}%</text>
+            <text class="arrow-right">></text>
+          </view>
+        </view>
+
+        <!-- 评价列表 (只显示前2条) -->
+        <view v-if="reviews.length > 0" class="product-detail__review-list">
+          <view
+            v-for="review in reviews.slice(0, 2)"
+            :key="review.id"
+            class="product-detail__review-item"
+          >
+            <view class="product-detail__review-header">
+              <view class="product-detail__review-user">
+                <image
+                  :src="review.userAvatar"
+                  class="product-detail__review-avatar"
+                />
+                <text class="product-detail__review-username">{{ review.userNickname }}</text>
+                <view class="product-detail__review-rating-stars">
+                     <text v-for="i in 5" :key="i" class="star" :class="{'star-active': i <= review.rating}">★</text>
+                </view>
+              </view>
+              <text class="product-detail__review-date">{{ review.createTime }}</text>
+            </view>
+            <text class="product-detail__review-content">
+              {{ review.content }}
+            </text>
+            <!-- 商家回复 -->
+            <view class="product-detail__review-reply" v-if="review.replyContent">
+              <text class="reply-label">商家回复：</text>
+              <text class="reply-content">{{ review.replyContent }}</text>
+            </view>
+          </view>
+        </view>
+        <view v-else class="product-detail__empty-review">
+            <text class="product-detail__empty-review-text">暂无评价</text>
+        </view>
+      </view>
+
+       <!-- 商品详情 -->
+      <view class="product-detail__section product-detail__detail-section">
+        <text class="product-detail__section-title-simple">商品详情</text>
+        <text class="product-detail__description">
+          {{ product.description }}
+        </text>
+      </view>
+
+      <!-- 底部安全区占位 -->
+      <view class="product-detail__safe-area-placeholder"></view>
+    </scroll-view>
+
+    <!-- 底部操作栏 -->
+    <view class="product-detail__footer">
+      <view class="product-detail__footer-icons">
+        <view class="product-detail__icon-btn" @click="toggleFavorite">
+             <text class="icon-text">{{ isFavorite ? '❤️' : '🤍' }}</text>
+            <text class="icon-label">收藏</text>
+        </view>
+      </view>
+      
+      <view class="product-detail__footer-actions">
+        <view
+            class="product-detail__action-btn product-detail__action-btn--cart"
+            @click="handleAddToCart"
+        >
+            <text class="product-detail__action-text">加入购物车</text>
+        </view>
+        <view
+            class="product-detail__action-btn product-detail__action-btn--buy"
+            @click="buyNow"
+        >
+            <text class="product-detail__action-text">立即购买</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+import { addToCart, type CartAddParams } from '@/api/cart'
+import { getProductDetail, collectProduct, uncollectProduct, isProductCollected } from '@/api/product'
+import { getProductReviews, type ReviewVO } from '@/api/review'
+import { recordBrowse } from '@/api/browseHistory'
+import { get } from '@/utils/request'
+
+type ProductSku = {
+  id : number
+  productId : number
+  skuName : string
+  skuCode : string
+  skuImage : string | null
+  price : number
+  stock : number
+  salesVolume : number
+  specInfo : string | null
+  status : number
+}
+
+type ProductSpec = {
+  id : string
+  name : string
+  options : string[]
+}
+
+type Product = {
+  id : number
+  name : string
+  description : string
+  price : number
+  originalPrice : number | null
+  image : string
+  rating : number
+  sales : number
+  stock : number
+  reviewCount : number
+  isNew : boolean
+  discount : boolean
+  isFresh : boolean
+  specs : Array<ProductSpec> | null
+  detailImages : string[] | null
+}
+
+export default {
+  name: 'ProductDetail',
+  data() {
+    return {
+      productId: 0,
+      product: {
+        id: 0,
+        name: '',
+        description: '',
+        price: 0,
+        originalPrice: null,
+        image: '',
+        rating: 5,
+        sales: 0,
+        stock: 0,
+        reviewCount: 0,
+        isNew: false,
+        discount: false,
+        isFresh: false,
+        specs: [] as ProductSpec[],
+        detailImages: [] as string[]
+      } as Product,
+      productImages: [] as string[],
+      currentImageIndex: 0,
+      selectedSpecs: new Map<string, string>(),
+      quantity: 1,
+      isFavorite: false,
+      skuList: [] as ProductSku[],
+      selectedSkuId: 0,
+      reviews: [] as ReviewVO[]
+    }
+  },
+  onLoad(options : any) {
+    // 从路由参数获取商品ID
+    const opts = options as UTSJSONObject
+    const queryId = opts.get('id')
+    if (queryId != null) {
+      const idStr = queryId as string
+      const idNum = parseInt(idStr)
+      this.productId = idNum > 0 ? idNum : 1
+    }
+
+    this.loadProductDetail()
+    this.loadProductReviews()
+    this.recordBrowseHistory()
+    this.checkCollectionStatus()
+    // 初始化默认规格
+    this.initDefaultSpecs()
+  },
+  methods: {
+    // 获取优惠金额
+    getDiscountAmount() : string {
+      const originalPrice = this.product.originalPrice
+      if (originalPrice != null) {
+        const discount = originalPrice - this.product.price
+        return discount.toFixed(2)
+      }
+      return '0.00'
+    },
+    // 检查是否有规格
+    hasSpecs() : boolean {
+      const specs = this.product.specs
+      return specs != null && specs.length > 0
+    },
+    /**
+     * 记录浏览历史
+     */
+    recordBrowseHistory() {
+      // 调用浏览历史接口
+      recordBrowse(this.productId).then(() => {
+        console.log('浏览历史记录成功')
+      }).catch((err) => {
+        console.error('记录浏览历史失败:', err)
+      })
+    },
+    
+    /**
+     * 加载商品评价
+     */
+    loadProductReviews() {
+      getProductReviews(this.productId, 1, 2).then((res) => {
+        const data = res.data as UTSJSONObject
+        const records = data.getArray('records')
+        if (records != null && records.length > 0) {
+          const reviews : ReviewVO[] = []
+          for (let i = 0; i < records.length; i++) {
+            const item = records[i] as UTSJSONObject
+            reviews.push({
+              id: (item.getNumber('id') ?? 0).toInt(),
+              productId: (item.getNumber('productId') ?? 0).toInt(),
+              productName: item.getString('productName') ?? '',
+              productMainImage: item.getString('productMainImage') ?? '',
+              userId: (item.getNumber('userId') ?? 0).toInt(),
+              userNickname: item.getString('userNickname') ?? '',
+              userAvatar: item.getString('userAvatar') ?? '',
+              orderId: (item.getNumber('orderId') ?? 0).toInt(),
+              rating: (item.getNumber('rating') ?? 5).toInt(),
+              content: item.getString('content') ?? '',
+              images: item.getString('images') ?? '',
+              replyContent: item.getString('replyContent'),
+              replyTime: item.getString('replyTime'),
+              status: (item.getNumber('status') ?? 1).toInt(),
+              createTime: item.getString('createTime') ?? ''
+            } as ReviewVO)
+          }
+          this.reviews = reviews
+        }
+      }).catch((err) => {
+        console.error('获取商品评价失败:', err)
+      })
+    },
+    
+    loadProductDetail() {
+      getProductDetail(this.productId).then((res) => {
+        const data = res.data as UTSJSONObject
+        // 解析商品基本信息
+        this.product.id = (data.getNumber('id') ?? 0).toInt()
+        this.product.name = data.getString('productName') ?? ''
+        this.product.description = data.getString('description') ?? ''
+        this.product.price = data.getNumber('currentPrice') ?? 0
+        this.product.originalPrice = data.getNumber('originalPrice')
+        this.product.image = data.getString('mainImage') ?? ''
+        this.product.rating = data.getNumber('avgRating') ?? 5
+        this.product.sales = (data.getNumber('salesVolume') ?? 0).toInt()
+        this.product.stock = (data.getNumber('stock') ?? 0).toInt()
+        this.product.reviewCount = (data.getNumber('reviewCount') ?? 0).toInt()
+        
+        // 解析商品图片
+        const imagesArr = data.getArray('images')
+        const imgs : string[] = []
+        
+        if (imagesArr != null && imagesArr.length > 0) {
+          for (let i = 0; i < imagesArr.length; i++) {
+            const imgObj = imagesArr[i] as UTSJSONObject
+            const imgUrl = imgObj.getString('imageUrl')
+            if (imgUrl != null && imgUrl !== '') {
+              imgs.push(imgUrl)
+            }
+          }
+        }
+        
+        // 如果没有图片数组，使用主图
+        if (imgs.length === 0) {
+          const mainImage = data.getString('mainImage')
+          if (mainImage != null && mainImage !== '') {
+            imgs.push(mainImage)
+          }
+        }
+        
+        if (imgs.length > 0) {
+          this.productImages = imgs
+          this.currentImageIndex = 0  // 重置图片索引为0
+          console.log('商品图片加载成功，共', imgs.length, '张')
+          console.log('图片URL列表:', imgs)
+        } else {
+          console.log('警告：商品没有图片')
+        }
+        
+        // 解析SKU列表并转换为UI规格展示
+        const skuArr = data.getArray('skuList')
+        if (skuArr != null && skuArr.length > 0) {
+          const skus : ProductSku[] = []
+          const specOptions : string[] = []
+
+          for (let i = 0; i < skuArr.length; i++) {
+            const skuObj = skuArr[i] as UTSJSONObject
+            const skuName = skuObj.getString('skuName') ?? ''
+            skus.push({
+              id: (skuObj.getNumber('id') ?? 0).toInt(),
+              productId: (skuObj.getNumber('productId') ?? 0).toInt(),
+              skuName: skuName,
+              skuCode: skuObj.getString('skuCode') ?? '',
+              skuImage: skuObj.getString('skuImage'),
+              price: skuObj.getNumber('price') ?? 0,
+              stock: (skuObj.getNumber('stock') ?? 0).toInt(),
+              salesVolume: (skuObj.getNumber('salesVolume') ?? 0).toInt(),
+              specInfo: skuObj.getString('specInfo'),
+              status: (skuObj.getNumber('status') ?? 1).toInt()
+            } as ProductSku)
+
+            if (skuName !== '') {
+              specOptions.push(skuName)
+            }
+          }
+          this.skuList = skus
+
+          // 将扁平的SKU列表映射为UI需要的规格组
+          if (specOptions.length > 0) {
+            this.product.specs = [{
+              id: 'sku',
+              name: '规格',
+              options: specOptions
+            } as ProductSpec]
+
+            // 默认选中第一个
+            this.selectedSpecs.set('sku', specOptions[0])
+            this.selectedSkuId = skus[0].id
+            this.product.price = skus[0].price
+            this.product.stock = skus[0].stock
+          }
+        }
+        
+        console.log('商品详情加载成功:', this.product.name, 'SKU数量:', this.skuList.length)
+      }).catch((err) => {
+        console.error('获取商品详情失败:', err)
+      })
+    },
+    
+    initDefaultSpecs() {
+        const specs = this.product.specs
+        if (specs != null) {
+            specs.forEach((spec : ProductSpec) => {
+                if (spec.options.length > 0) {
+                    // 使用 Map 的 set 方法兼容 UTS 语法
+                    this.selectedSpecs.set(spec.id, spec.options[0])
+                }
+            })
+        }
+    },
+
+    // 检查规格是否被选中 - 用于模板中的动态类名
+    isSpecSelected(specId : string, option : string) : boolean {
+        return this.selectedSpecs.get(specId) === option
+    },
+
+    // 图片轮播变更
+    handleImageChange(e : UniSwiperChangeEvent) {
+      // swiper change 事件传递事件对象，需要从detail中获取current
+      this.currentImageIndex = e.detail.current
+    },
+
+    // 预览轮播图
+    previewImage(index : number) {
+        uni.previewImage({
+            urls: this.productImages,
+            current: index
+        })
+    },
+    
+    // 预览详情图
+    previewDetailImage(index : number) {
+        const detailImages = this.product.detailImages
+        if (detailImages != null) {
+            uni.previewImage({
+                urls: detailImages,
+                current: index
+            })
+        }
+    },
+
+    // 选择规格
+    selectSpec(specId : string, option : string) {
+      // 使用 Map 的 set 方法兼容 UTS 语法
+      this.selectedSpecs.set(specId, option)
+
+      // 如果是单规格维度（目前对接的逻辑），根据选中的选项名称匹配 SKU
+      if (specId === 'sku') {
+        const selectedSku = this.skuList.find((item : ProductSku) : boolean => item.skuName === option)
+        if (selectedSku != null) {
+          this.selectedSkuId = selectedSku.id
+          this.product.price = selectedSku.price
+          this.product.stock = selectedSku.stock
+
+          // 如果选择的数量超过了新规格的库存，重置为最大库存或1
+          if (this.quantity > selectedSku.stock) {
+            this.quantity = Math.max(1, selectedSku.stock)
+          }
+        }
+      }
+    },
+
+    // 增加数量
+    increaseQuantity() {
+      if (this.quantity < this.product.stock) {
+        this.quantity++
+      }
+    },
+
+    // 减少数量
+    decreaseQuantity() {
+      if (this.quantity > 1) {
+        this.quantity--
+      }
+    },
+    
+    /**
+     * 检查商品收藏状态
+     */
+    checkCollectionStatus() {
+      isProductCollected(this.productId).then((result) => {
+        if (result.code === 200) {
+          this.isFavorite = result.data as boolean
+        }
+      }).catch((error) => {
+        console.error('检查收藏状态失败:', error)
+      })
+    },
+    
+    /**
+     * 切换收藏状态
+     */
+    toggleFavorite() {
+      const targetStatus = !this.isFavorite
+      const apiCall = targetStatus ? collectProduct(this.productId) : uncollectProduct(this.productId)
+      
+      apiCall.then((result) => {
+        if (result.code === 200) {
+          this.isFavorite = targetStatus
+          uni.showToast({
+            title: targetStatus ? '已收藏' : '已取消收藏',
+            icon: 'success'
+          })
+          // 触发刷新事件，更新个人中心的收藏数
+          uni.$emit('refreshFavorites')
+        } else {
+          uni.showToast({
+            title: result.message ?? '操作失败',
+            icon: 'none'
+          })
+        }
+      }).catch((error) => {
+        console.error('收藏操作失败:', error)
+        uni.showToast({
+          title: '操作失败，请重试',
+          icon: 'none'
+        })
+      })
+    },
+
+    // 获取当前选中的规格名称
+    getSelectedSpecName() : string {
+      const specs = this.product.specs
+      if (specs == null || specs.length === 0) {
+        return ''
+      }
+      const specNames : string[] = []
+      specs.forEach((spec : ProductSpec) => {
+        const selected = this.selectedSpecs.get(spec.id)
+        if (selected != null) {
+          specNames.push(selected)
+        }
+      })
+      return specNames.join(' ')
+    },
+    
+    // 加入购物车
+    handleAddToCart() {
+      // 使用选中的SKU ID，如果没有SKU则使用商品ID
+      const skuId = this.selectedSkuId > 0 ? this.selectedSkuId : this.productId
+      const params : CartAddParams = {
+        productId: this.productId,
+        skuId: skuId,
+        quantity: this.quantity
+      }
+      console.log('添加购物车参数:', JSON.stringify(params))
+      addToCart(params).then(() => {
+        uni.showToast({
+          title: '已添加到购物车',
+          icon: 'success',
+          duration: 1500
+        })
+        // 通知底部导航栏刷新数量
+        uni.$emit('bottomNavRefresh')
+      }).catch((err) => {
+        console.error('添加购物车失败:', err)
+        uni.showToast({
+          title: '添加失败',
+          icon: 'none'
+        })
+      })
+    },
+
+    // 立即购买
+    buyNow() {
+      // 构建跳转参数
+      const skuId = this.selectedSkuId > 0 ? this.selectedSkuId : this.productId
+      const skuName = this.getSelectedSpecName()
+      const params = `type=direct&productId=${this.productId}&skuId=${skuId}&quantity=${this.quantity}&productName=${encodeURIComponent(this.product.name)}&skuName=${encodeURIComponent(skuName)}&price=${this.product.price}&productImage=${encodeURIComponent(this.product.image)}`
+      uni.navigateTo({
+        url: `/pages/order/checkout?${params}`
+      })
+    },
+    
+    viewAllReviews() {
+      uni.navigateTo({
+        url: `/pages/product/reviews?productId=${this.productId}&productName=${encodeURIComponent(this.product.name)}`
+      })
+    }
+  }
+}
+</script>
+
+<style scoped lang="scss">
+.product-detail-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background-color: $uni-bg-color-grey;
+}
+
+// 内容区域
+.product-detail__scroll {
+  flex: 1;
+  width: 100%;
+  height: 0;
+}
+
+// 图片轮播
+.product-detail__carousel {
+  position: relative;
+  width: 100%;
+  background: #ffffff;
+}
+
+.product-detail__loading {
+  width: 100%;
+  height: 750rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f5f5f5;
+}
+
+.loading-text {
+  font-size: 14px;
+  color: #999;
+}
+
+.product-detail__swiper {
+  width: 100%;
+  height: 750rpx;
+}
+
+.product-detail__swiper-item {
+  width: 100%;
+  height: 100%;
+  background-color: #f5f5f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.product-detail__image {
+  width: 100%;
+  height: 100%;
+  background-color: #ffffff;
+}
+
+.product-detail__image-indicator {
+  position: absolute;
+  bottom: 20rpx;
+  right: 20rpx;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 6rpx 16rpx;
+  border-radius: 20rpx;
+  z-index: 5;
+}
+
+.product-detail__indicator-text {
+  color: #fff;
+  font-size: 22rpx;
+}
+
+// 商品基本信息
+.product-detail__info-section {
+  background: #ffffff;
+  padding: 24rpx 28rpx;
+  margin: 0 0 12rpx 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.product-detail__price-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 20rpx;
+  padding-bottom: 20rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.product-detail__price-group {
+    display: flex;
+    flex-direction: row; // 显式声明横向
+    align-items: center;
+    color: $uni-color-error;
+}
+
+.product-detail__currency {
+    font-size: 28rpx;
+    font-weight: bold;
+    color: $uni-color-error;
+}
+
+.product-detail__current-price {
+  font-size: 48rpx;
+  font-weight: bold;
+  margin-right: 16rpx;
+  color: #ff4d4f;
+}
+
+.product-detail__original-price {
+  font-size: 26rpx;
+  color: $uni-text-color-grey;
+  opacity: 0.7;
+}
+
+.product-detail__sales {
+    font-size: 24rpx;
+    color: $uni-text-color-grey;
+}
+
+.product-detail__tags-row {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin-bottom: 16rpx;
+}
+
+.product-detail__tag {
+    padding: 6rpx 16rpx;
+    border-radius: 20rpx;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    margin-right: 8rpx;
+    margin-bottom: 8rpx;
+    
+    &--discount {
+        background: linear-gradient(135deg, #fff0f0 0%, #ffe0e0 100%);
+        border: 2rpx solid #ffcccc;
+    }
+    
+    &--new {
+        background: linear-gradient(135deg, #e6f7ff 0%, #bae0ff 100%);
+        border: 2rpx solid #91caff;
+    }
+    
+    &--fresh {
+        background: linear-gradient(135deg, #f6ffed 0%, #d9f7be 100%);
+        border: 2rpx solid #b7eb8f;
+    }
+}
+
+.product-detail__tag-text {
+  font-size: 20rpx;
+  font-weight: normal;
+  
+  &--discount {
+    color: #ff4d4f;
+  }
+  &--new {
+    color: #0066CC;
+  }
+  &--fresh {
+    color: #52c41a;
+  }
+}
+
+.product-detail__name {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #1a1a1a;
+  margin-bottom: 12rpx;
+  line-height: 1.4;
+}
+
+.product-detail__brief {
+    font-size: 24rpx;
+    color: $uni-text-color-grey;
+    line-height: 1.4;
+    margin-bottom: 16rpx;
+}
+
+.product-detail__meta-row {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 16rpx;
+}
+
+.product-detail__rating {
+    display: flex;
+    flex-direction: row; // 显式声明横向
+    align-items: center;
+}
+
+.rating-star {
+    margin-right: 8rpx;
+    font-size: 24rpx;
+}
+.rating-score {
+    font-weight: bold;
+    color: $uni-text-color;
+    margin-right: 8rpx;
+    font-size: 24rpx;
+}
+.rating-count {
+    color: $uni-text-color-grey;
+    font-size: 24rpx;
+}
+
+.product-detail__stock-status {
+    font-size: 24rpx;
+    color: $uni-color-success;
+    
+    &--low {
+        color: $uni-color-warning;
+    }
+}
+
+// 通用区块样式
+.product-detail__section {
+    background: #ffffff;
+    padding: 24rpx 28rpx;
+    margin-bottom: 12rpx;
+    display: flex;
+    flex-direction: column;
+}
+
+.product-detail__section-title-box {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.product-detail__section-title {
+    font-size: 30rpx;
+    font-weight: bold;
+    color: $uni-text-color;
+}
+
+.title-count {
+    font-size: 24rpx;
+    color: $uni-text-color-grey;
+    font-weight: normal;
+    margin-left: 8rpx;
+}
+
+.product-detail__section-title-simple {
+    font-size: 30rpx;
+    font-weight: bold;
+    color: $uni-text-color;
+    margin-bottom: 24rpx;
+    position: relative;
+    padding-left: 20rpx;
+    
+    // 简单标题无法使用伪元素在uts中完美模拟左侧竖线，改用边框或者view
+    // 这里uts支持border-left
+    border-left: 6rpx solid $uni-color-primary;
+}
+
+// 规格选择
+.product-detail__spec-item {
+  margin-bottom: 24rpx;
+  display: flex;
+  flex-direction: column;
+}
+
+.product-detail__spec-label {
+  font-size: 28rpx;
+  color: $uni-text-color;
+  font-weight: bold;
+  margin-bottom: 12rpx;
+}
+
+.product-detail__spec-options {
+  display: flex;
+  flex-direction: row; // 显式声明横向
+  flex-wrap: wrap;
+}
+
+.product-detail__spec-option {
+  padding: 12rpx 32rpx;
+  border: 2rpx solid #e8e8e8;
+  border-radius: 8rpx;
+  background-color: #fafafa;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  margin-right: 16rpx;
+  margin-bottom: 16rpx;
+
+  &--selected {
+    background: linear-gradient(135deg, #e6f7ff 0%, #bae0ff 100%);
+    border-color: #0066CC;
+    border-width: 2rpx;
+    box-shadow: 0 4rpx 12rpx rgba(0, 102, 204, 0.2);
+  }
+}
+
+.product-detail__spec-text {
+  font-size: 24rpx;
+  color: $uni-text-color;
+  
+  &--selected {
+    color: $uni-color-primary;
+    /* 500 改为 400 */
+    font-weight: 400;
+  }
+}
+
+// 数量选择
+.product-detail__quantity-row {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8rpx;
+}
+
+.product-detail__quantity-control {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  background: #f5f5f5;
+  border-radius: 8rpx;
+  padding: 4rpx;
+  border: 1rpx solid #e0e0e0;
+}
+
+.product-detail__quantity-btn {
+  width: 56rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border-radius: 6rpx;
+  margin: 0 2rpx;
+  
+  &--disabled {
+      background: transparent;
+      box-shadow: none;
+      opacity: 0.5;
+  }
+}
+
+.product-detail__quantity-btn-text {
+  font-size: 32rpx;
+  color: #333;
+  font-weight: bold;
+}
+
+.product-detail__quantity-input {
+  width: 80rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.product-detail__quantity-input-text {
+  font-size: 30rpx;
+  color: #1a1a1a;
+  font-weight: bold;
+  font-weight: bold;
+}
+
+// 评价区域
+.product-detail__section-header {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20rpx;
+}
+
+.product-detail__section-more {
+    display: flex;
+    flex-direction: row; // 显式声明横向
+    align-items: center;
+}
+
+.product-detail__section-more-text {
+    font-size: 24rpx;
+    color: $uni-text-color-grey;
+}
+
+.arrow-right {
+    margin-left: 4rpx;
+    font-size: 24rpx;
+    color: $uni-text-color-grey;
+}
+
+.product-detail__review-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.product-detail__review-item {
+    border-bottom: 1px solid $uni-border-color-light;
+    padding-bottom: 24rpx;
+    margin-bottom: 24rpx;
+    display: flex;
+    flex-direction: column;
+}
+
+.product-detail__review-header {
+    display: flex;
+    flex-direction: row; // 显式声明横向
+    justify-content: space-between;
+    margin-bottom: 12rpx;
+}
+
+.product-detail__review-user {
+    display: flex;
+    flex-direction: row; // 显式声明横向
+    align-items: center;
+}
+
+.product-detail__review-avatar {
+    width: 48rpx;
+    height: 48rpx;
+    border-radius: 999px;
+    margin-right: 12rpx;
+    background-color: #eee;
+}
+
+.product-detail__review-username {
+    font-size: 24rpx;
+    color: $uni-text-color-grey;
+    margin-right: 12rpx;
+}
+
+.product-detail__review-rating-stars {
+    display: flex;
+    flex-direction: row; // 显式声明横向
+}
+
+.star {
+    font-size: 20rpx;
+    color: $uni-text-color-disable;
+    margin-right: 2rpx;
+}
+
+.star-active {
+    color: $uni-color-warning;
+}
+
+.product-detail__review-date {
+    font-size: 22rpx;
+    color: $uni-text-color-disable;
+}
+
+.product-detail__review-content {
+    font-size: 26rpx;
+    color: $uni-text-color;
+    line-height: 1.5;
+}
+
+.product-detail__review-reply {
+    margin-top: 16rpx;
+    padding: 16rpx;
+    background-color: #f8f8f8;
+    border-radius: 8rpx;
+    display: flex;
+    flex-direction: column;
+
+    .reply-label {
+        font-size: 24rpx;
+        color: #0066CC;
+        font-weight: bold;
+        margin-bottom: 8rpx;
+    }
+
+    .reply-content {
+        font-size: 24rpx;
+        color: #666;
+        line-height: 1.4;
+    }
+}
+
+.product-detail__empty-review {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40rpx 0;
+    background: #fafafa;
+    border-radius: 8rpx;
+}
+
+.product-detail__empty-review-text {
+    color: $uni-text-color-grey;
+    font-size: 24rpx;
+}
+
+// 商品详情
+.product-detail__detail-section {
+    padding-bottom: 24rpx;
+}
+
+.product-detail__description {
+    font-size: 26rpx;
+    color: $uni-text-color;
+    line-height: 1.8;
+    padding: 20rpx 0;
+    text-align: left;
+}
+
+// 底部占位
+.product-detail__safe-area-placeholder {
+    height: 140rpx;
+    width: 100%;
+}
+
+// 底部操作栏
+.product-detail__footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 16rpx 20rpx;
+  padding-bottom: 24rpx; 
+  box-shadow: 0 -2rpx 16rpx rgba(0, 0, 0, 0.06);
+  z-index: 1000;
+  border-top: 1rpx solid #f0f0f0;
+}
+
+.product-detail__footer-icons {
+    display: flex;
+    flex-direction: row; // 显式声明横向
+    margin-right: 20rpx;
+}
+
+.product-detail__icon-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 90rpx;
+    
+    .icon-text {
+        font-size: 36rpx;
+        margin-bottom: 4rpx;
+    }
+    
+    .icon-label {
+        font-size: 20rpx;
+        color: $uni-text-color-grey;
+    }
+}
+
+.product-detail__footer-actions {
+    flex: 1;
+    display: flex;
+    flex-direction: row; // 显式声明横向
+    height: 80rpx;
+}
+
+.product-detail__action-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    height: 76rpx;
+}
+
+.product-detail__action-btn--cart {
+    background-color: #FF9500;
+    border-radius: 8rpx;
+    margin-right: 12rpx;
+}
+
+.product-detail__action-btn--buy {
+    background-color: #FF3D00;
+    border-radius: 8rpx;
+}
+
+.product-detail__action-text {
+    font-size: 30rpx;
+    font-weight: bold;
+    letter-spacing: 1px;
+    color: #ffffff;
+}
+</style>

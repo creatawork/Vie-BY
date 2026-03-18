@@ -1,0 +1,1117 @@
+<template>
+  <view class="page">
+    <!-- 顶部导航栏 -->
+    <view class="nav-bar">
+      <view class="nav-left" @click="goBack">
+        <text class="nav-back">←</text>
+      </view>
+      <text class="nav-title">{{ isEditMode ? '编辑商品' : '发布商品' }}</text>
+      <view class="nav-right"></view>
+    </view>
+
+    <!-- 表单内容 -->
+    <scroll-view class="form-scroll" scroll-y="true" :show-scrollbar="false">
+      <!-- 基本信息 -->
+      <view class="form-section">
+        <view class="section-title">
+          <text class="section-title-text">基本信息</text>
+        </view>
+        
+        <!-- 分类选择 -->
+        <view class="form-item" @click="showCategoryPicker">
+          <text class="form-label"><text class="required">*</text>商品分类</text>
+          <view class="form-value">
+            <text class="form-value-text" :class="{ placeholder: selectedCategoryName === '' }">
+              {{ selectedCategoryName !== '' ? selectedCategoryName : '请选择分类' }}
+            </text>
+            <text class="form-arrow">›</text>
+          </view>
+        </view>
+        
+        <!-- 商品名称 -->
+        <view class="form-item">
+          <text class="form-label"><text class="required">*</text>商品名称</text>
+          <input class="form-input" v-model="formData.productName" placeholder="请输入商品名称" maxlength="100" />
+        </view>
+        
+        <!-- 商品描述 -->
+        <view class="form-item form-item-textarea">
+          <text class="form-label">商品描述</text>
+          <textarea class="form-textarea" v-model="formData.description" placeholder="请输入商品描述" maxlength="500" />
+        </view>
+      </view>
+
+      <!-- 商品图片 -->
+      <view class="form-section">
+        <view class="section-title">
+          <text class="section-title-text">商品图片</text>
+        </view>
+        
+        <view class="form-item">
+          <text class="form-label"><text class="required">*</text>商品主图</text>
+        </view>
+        <view class="image-upload-area">
+          <view class="image-preview" v-if="formData.mainImage !== ''">
+            <image class="preview-img" :src="formData.mainImage" mode="aspectFill"></image>
+            <view class="image-delete" @click="deleteMainImage">
+              <text class="delete-icon">×</text>
+            </view>
+          </view>
+          <view class="upload-btn" v-else @click="chooseMainImage">
+            <text class="upload-icon">+</text>
+            <text class="upload-text">上传主图</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 价格信息 -->
+      <view class="form-section">
+        <view class="section-title">
+          <text class="section-title-text">价格信息</text>
+        </view>
+        
+        <view class="form-item">
+          <text class="form-label"><text class="required">*</text>现价</text>
+          <view class="price-input-wrapper">
+            <text class="price-unit">¥</text>
+            <input class="price-input" v-model="formData.currentPrice" type="digit" placeholder="0.00" />
+          </view>
+        </view>
+
+        <view class="form-item">
+          <text class="form-label">原价</text>
+          <view class="price-input-wrapper">
+            <text class="price-unit">¥</text>
+            <input class="price-input" v-model="formData.originalPrice" type="digit" placeholder="0.00" />
+          </view>
+        </view>
+      </view>
+
+      <!-- SKU管理 -->
+      <view class="form-section">
+        <view class="section-title">
+          <text class="section-title-text">规格管理</text>
+          <view class="add-sku-btn" @click="showAddSkuModal">
+            <text class="add-sku-text">+ 添加规格</text>
+          </view>
+        </view>
+        
+        <!-- SKU列表 -->
+        <view class="sku-list" v-if="skuList.length > 0">
+          <view class="sku-item" v-for="(sku, index) in skuList" :key="index">
+            <view class="sku-info">
+              <text class="sku-name">{{ sku.skuName }}</text>
+              <view class="sku-details">
+                <text class="sku-price">¥{{ sku.price.toFixed(2) }}</text>
+                <text class="sku-stock">库存: {{ sku.stock }}</text>
+              </view>
+            </view>
+            <view class="sku-actions">
+              <view class="sku-action-btn" @click="editSku(index)">
+                <text class="sku-action-text">编辑</text>
+              </view>
+              <view class="sku-action-btn sku-action-btn-delete" @click="deleteSku(index)">
+                <text class="sku-action-text sku-action-text-delete">删除</text>
+              </view>
+            </view>
+          </view>
+        </view>
+        
+        <view class="empty-sku" v-else>
+          <text class="empty-sku-text">暂无规格，请添加至少一个规格</text>
+        </view>
+      </view>
+
+      <!-- 底部占位 -->
+      <view style="height: 100px;"></view>
+    </scroll-view>
+
+    <!-- 底部提交按钮 -->
+    <view class="submit-bar">
+      <view class="submit-btn" :class="{ disabled: isSubmitting }" @click="handleSubmit">
+        <text class="submit-btn-text">{{ isSubmitting ? '提交中...' : (isEditMode ? '保存修改' : '发布商品') }}</text>
+      </view>
+    </view>
+
+    <!-- 分类选择弹窗 -->
+    <view class="modal-mask" v-if="showCategoryModal" @click="closeCategoryModal">
+      <view class="modal-content category-modal" @click.stop="">
+        <view class="modal-header">
+          <text class="modal-title">选择分类</text>
+          <view class="modal-close" @click="closeCategoryModal">
+            <text class="close-icon">×</text>
+          </view>
+        </view>
+        <scroll-view class="category-list" scroll-y="true" :show-scrollbar="false">
+          <view class="category-item" v-for="category in categories" :key="category.id" @click="selectCategory(category)">
+            <text class="category-name">{{ category.categoryName }}</text>
+            <text class="category-check" v-if="formData.categoryId === category.id">✓</text>
+          </view>
+        </scroll-view>
+      </view>
+    </view>
+
+    <!-- SKU编辑弹窗 -->
+    <view class="modal-mask" v-if="showSkuModal" @click="closeSkuModal">
+      <view class="modal-content sku-modal" @click.stop="">
+        <view class="modal-header">
+          <text class="modal-title">{{ editingSkuIndex >= 0 ? '编辑规格' : '添加规格' }}</text>
+          <view class="modal-close" @click="closeSkuModal">
+            <text class="close-icon">×</text>
+          </view>
+        </view>
+        <view class="sku-form">
+          <view class="sku-form-item">
+            <text class="sku-form-label"><text class="required">*</text>规格名称</text>
+            <input class="sku-form-input" v-model="skuForm.skuName" placeholder="如：500g装" />
+          </view>
+          <view class="sku-form-item">
+            <text class="sku-form-label"><text class="required">*</text>价格</text>
+            <view class="price-input-wrapper">
+              <text class="price-unit">¥</text>
+              <input class="sku-form-input price-input" v-model="skuForm.price" type="digit" placeholder="0.00" />
+            </view>
+          </view>
+          <view class="sku-form-item">
+            <text class="sku-form-label"><text class="required">*</text>库存</text>
+            <input class="sku-form-input" v-model="skuForm.stock" type="number" placeholder="0" />
+          </view>
+          <view class="sku-form-item">
+            <text class="sku-form-label">规格信息</text>
+            <input class="sku-form-input" v-model="skuForm.specInfo" placeholder="如：重量:500g" />
+          </view>
+        </view>
+        <view class="modal-footer">
+          <view class="modal-btn modal-btn-cancel" @click="closeSkuModal">
+            <text class="modal-btn-text">取消</text>
+          </view>
+          <view class="modal-btn modal-btn-confirm" @click="saveSku">
+            <text class="modal-btn-text modal-btn-text-confirm">确定</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+import { getSellerProductDetail, createProduct, updateProduct, uploadProductImage, type ProductFormData, type SkuItem } from '@/api/seller'
+import { getCategories } from '@/api/product'
+
+// 分类类型
+type CategoryType = {
+  id: number
+  categoryName: string
+  parentId: number
+  level: number
+}
+
+// SKU表单类型
+type SkuFormType = {
+  skuName: string
+  price: string
+  stock: string
+  specInfo: string
+}
+
+// 表单数据类型
+type FormDataType = {
+  categoryId: number
+  productName: string
+  mainImage: string
+  description: string
+  detail: string
+  originalPrice: string
+  currentPrice: string
+}
+
+export default {
+  data() {
+    return {
+      isEditMode: false,
+      productId: 0,
+      isLoading: false,
+      isSubmitting: false,
+      
+      // 表单数据
+      formData: {
+        categoryId: 0,
+        productName: '',
+        mainImage: '',
+        description: '',
+        detail: '',
+        originalPrice: '',
+        currentPrice: ''
+      } as FormDataType,
+      
+      // SKU列表
+      skuList: [] as SkuItem[],
+      
+      // 分类相关
+      categories: [] as CategoryType[],
+      selectedCategoryName: '',
+      showCategoryModal: false,
+      
+      // SKU弹窗相关
+      showSkuModal: false,
+      editingSkuIndex: -1,
+      skuForm: {
+        skuName: '',
+        price: '',
+        stock: '',
+        specInfo: ''
+      } as SkuFormType
+    }
+  },
+  onLoad(options: OnLoadOptions) {
+    // 判断是新增还是编辑模式
+    const id = options['id']
+    if (id != null && id !== '') {
+      this.isEditMode = true
+      this.productId = parseInt(id)
+      this.loadProductDetail()
+    }
+    
+    // 加载分类列表
+    this.loadCategories()
+  },
+  methods: {
+    // 返回上一页
+    goBack() {
+      uni.navigateBack({})
+    },
+    
+    // 加载分类列表
+    loadCategories() {
+      getCategories().then((res) => {
+        const data = res.data as UTSJSONObject[]
+        if (data != null) {
+          this.categories = this.parseCategoriesFlat(data)
+        }
+      }).catch((err) => {
+        console.error('获取分类失败:', err)
+      })
+    },
+    
+    // 解析分类为扁平列表（只取叶子节点或一级分类）
+    parseCategoriesFlat(data: UTSJSONObject[]): CategoryType[] {
+      const result: CategoryType[] = []
+      for (let i = 0; i < data.length; i++) {
+        const item = data[i]
+        const children = item.getArray('children')
+        
+        if (children != null && children.length > 0) {
+          // 有子分类，递归处理
+          for (let j = 0; j < children.length; j++) {
+            const child = children[j] as UTSJSONObject
+            const subChildren = child.getArray('children')
+            
+            if (subChildren != null && subChildren.length > 0) {
+              // 三级分类
+              for (let k = 0; k < subChildren.length; k++) {
+                const subChild = subChildren[k] as UTSJSONObject
+                result.push({
+                  id: (subChild.getNumber('id') ?? 0).toInt(),
+                  categoryName: (item.getString('categoryName') ?? '') + ' > ' + (child.getString('categoryName') ?? '') + ' > ' + (subChild.getString('categoryName') ?? ''),
+                  parentId: (subChild.getNumber('parentId') ?? 0).toInt(),
+                  level: 3
+                } as CategoryType)
+              }
+            } else {
+              // 二级分类
+              result.push({
+                id: (child.getNumber('id') ?? 0).toInt(),
+                categoryName: (item.getString('categoryName') ?? '') + ' > ' + (child.getString('categoryName') ?? ''),
+                parentId: (child.getNumber('parentId') ?? 0).toInt(),
+                level: 2
+              } as CategoryType)
+            }
+          }
+        } else {
+          // 一级分类（无子分类）
+          result.push({
+            id: (item.getNumber('id') ?? 0).toInt(),
+            categoryName: item.getString('categoryName') ?? '',
+            parentId: 0,
+            level: 1
+          } as CategoryType)
+        }
+      }
+      return result
+    },
+    
+    // 加载商品详情（编辑模式）
+    loadProductDetail() {
+      this.isLoading = true
+      getSellerProductDetail(this.productId).then((res) => {
+        const data = res.data as UTSJSONObject
+        if (data != null) {
+          this.formData.categoryId = (data.getNumber('categoryId') ?? 0).toInt()
+          this.formData.productName = data.getString('productName') ?? ''
+          this.formData.mainImage = data.getString('mainImage') ?? ''
+          this.formData.description = data.getString('description') ?? ''
+          this.formData.detail = data.getString('detail') ?? ''
+          
+          const originalPrice = data.getNumber('originalPrice')
+          this.formData.originalPrice = originalPrice != null ? originalPrice.toFixed(2) : ''
+          
+          const currentPrice = data.getNumber('currentPrice')
+          this.formData.currentPrice = currentPrice != null ? currentPrice.toFixed(2) : ''
+          
+          // 设置分类名称
+          const categoryName = data.getString('categoryName')
+          if (categoryName != null) {
+            this.selectedCategoryName = categoryName
+          }
+          
+          // 解析SKU列表
+          const skuListData = data.getArray('skuList')
+          if (skuListData != null) {
+            this.skuList = this.parseSkuList(skuListData as UTSArray<any>)
+          }
+        }
+        this.isLoading = false
+      }).catch((err) => {
+        console.error('获取商品详情失败:', err)
+        this.isLoading = false
+        uni.showToast({ title: '获取商品详情失败', icon: 'none' })
+      })
+    },
+    
+    // 解析SKU列表
+    parseSkuList(data: UTSArray<any>): SkuItem[] {
+      const result: SkuItem[] = []
+      for (let i = 0; i < data.length; i++) {
+        const item = data[i] as UTSJSONObject
+        result.push({
+          skuName: item.getString('skuName') ?? '',
+          price: item.getNumber('price') ?? 0,
+          stock: (item.getNumber('stock') ?? 0).toInt(),
+          specInfo: item.getString('specInfo')
+        } as SkuItem)
+      }
+      return result
+    },
+    
+    // 显示分类选择弹窗
+    showCategoryPicker() {
+      this.showCategoryModal = true
+    },
+    
+    // 关闭分类选择弹窗
+    closeCategoryModal() {
+      this.showCategoryModal = false
+    },
+    
+    // 选择分类
+    selectCategory(category: CategoryType) {
+      this.formData.categoryId = category.id
+      this.selectedCategoryName = category.categoryName
+      this.showCategoryModal = false
+    },
+    
+    // 选择主图
+    chooseMainImage() {
+      uni.chooseImage({
+        count: 1,
+        sizeType: ['compressed'],
+        sourceType: ['album', 'camera'],
+        success: (res) => {
+          const tempFilePath = res.tempFilePaths[0]
+          this.uploadImage(tempFilePath)
+        }
+      })
+    },
+    
+    // 上传图片
+    uploadImage(filePath: string) {
+      uni.showLoading({ title: '上传中...' })
+      uploadProductImage(filePath).then((res) => {
+        uni.hideLoading()
+        const data = res.data as UTSJSONObject
+        const imageUrl = data.getString('url')
+        if (imageUrl != null && imageUrl !== '') {
+          this.formData.mainImage = imageUrl
+          uni.showToast({ title: '上传成功', icon: 'success' })
+        }
+      }).catch((err) => {
+        uni.hideLoading()
+        console.error('上传图片失败:', err)
+        uni.showToast({ title: '上传失败', icon: 'none' })
+      })
+    },
+    
+    // 删除主图
+    deleteMainImage() {
+      this.formData.mainImage = ''
+    },
+    
+    // 显示添加SKU弹窗
+    showAddSkuModal() {
+      this.editingSkuIndex = -1
+      this.skuForm = {
+        skuName: '',
+        price: '',
+        stock: '',
+        specInfo: ''
+      } as SkuFormType
+      this.showSkuModal = true
+    },
+    
+    // 编辑SKU
+    editSku(index: number) {
+      this.editingSkuIndex = index
+      const sku = this.skuList[index]
+      this.skuForm = {
+        skuName: sku.skuName,
+        price: sku.price.toFixed(2),
+        stock: sku.stock.toString(),
+        specInfo: sku.specInfo ?? ''
+      } as SkuFormType
+      this.showSkuModal = true
+    },
+    
+    // 删除SKU
+    deleteSku(index: number) {
+      uni.showModal({
+        title: '提示',
+        content: '确定要删除该规格吗？',
+        success: (res) => {
+          if (res.confirm) {
+            this.skuList.splice(index, 1)
+          }
+        }
+      })
+    },
+    
+    // 关闭SKU弹窗
+    closeSkuModal() {
+      this.showSkuModal = false
+    },
+    
+    // 保存SKU
+    saveSku() {
+      // 验证SKU表单
+      if (this.skuForm.skuName.trim() === '') {
+        uni.showToast({ title: '请输入规格名称', icon: 'none' })
+        return
+      }
+      
+      const price = parseFloat(this.skuForm.price)
+      if (isNaN(price) || price <= 0) {
+        uni.showToast({ title: '请输入有效的价格', icon: 'none' })
+        return
+      }
+      
+      const stock = parseInt(this.skuForm.stock)
+      if (isNaN(stock) || stock < 0) {
+        uni.showToast({ title: '请输入有效的库存', icon: 'none' })
+        return
+      }
+      
+      const skuItem: SkuItem = {
+        skuName: this.skuForm.skuName.trim(),
+        price: price,
+        stock: stock,
+        specInfo: this.skuForm.specInfo.trim() !== '' ? this.skuForm.specInfo.trim() : null
+      }
+      
+      if (this.editingSkuIndex >= 0) {
+        // 编辑模式
+        this.skuList[this.editingSkuIndex] = skuItem
+      } else {
+        // 添加模式
+        this.skuList.push(skuItem)
+      }
+      
+      this.showSkuModal = false
+    },
+    
+    // 表单验证
+    validateForm(): boolean {
+      if (this.formData.categoryId === 0) {
+        uni.showToast({ title: '请选择商品分类', icon: 'none' })
+        return false
+      }
+      
+      if (this.formData.productName.trim() === '') {
+        uni.showToast({ title: '请输入商品名称', icon: 'none' })
+        return false
+      }
+      
+      if (this.formData.mainImage === '') {
+        uni.showToast({ title: '请上传商品主图', icon: 'none' })
+        return false
+      }
+      
+      const currentPrice = parseFloat(this.formData.currentPrice)
+      if (isNaN(currentPrice) || currentPrice <= 0) {
+        uni.showToast({ title: '请输入有效的商品价格', icon: 'none' })
+        return false
+      }
+      
+      if (this.skuList.length === 0) {
+        uni.showToast({ title: '请至少添加一个规格', icon: 'none' })
+        return false
+      }
+      
+      return true
+    },
+    
+    // 提交表单
+    handleSubmit() {
+      if (this.isSubmitting) return
+      
+      if (!this.validateForm()) return
+      
+      this.isSubmitting = true
+      
+      const currentPrice = parseFloat(this.formData.currentPrice)
+      const originalPriceStr = this.formData.originalPrice.trim()
+      const originalPrice = originalPriceStr !== '' ? parseFloat(originalPriceStr) : null
+      
+      const productData: ProductFormData = {
+        categoryId: this.formData.categoryId,
+        productName: this.formData.productName.trim(),
+        mainImage: this.formData.mainImage,
+        description: this.formData.description.trim() !== '' ? this.formData.description.trim() : null,
+        detail: this.formData.detail.trim() !== '' ? this.formData.detail.trim() : null,
+        originalPrice: originalPrice,
+        currentPrice: currentPrice,
+        isRecommended: null,
+        isNew: null,
+        isHot: null,
+        images: null,
+        skuList: this.skuList
+      }
+      
+      if (this.isEditMode) {
+        // 更新商品
+        updateProduct(this.productId, productData).then(() => {
+          this.isSubmitting = false
+          uni.showToast({ title: '保存成功', icon: 'success' })
+          setTimeout(() => {
+            uni.navigateBack({})
+          }, 1500)
+        }).catch((err) => {
+          this.isSubmitting = false
+          console.error('更新商品失败:', err)
+          uni.showToast({ title: '保存失败', icon: 'none' })
+        })
+      } else {
+        // 创建商品
+        createProduct(productData).then(() => {
+          this.isSubmitting = false
+          uni.showToast({ title: '发布成功', icon: 'success' })
+          setTimeout(() => {
+            uni.navigateBack({})
+          }, 1500)
+        }).catch((err) => {
+          this.isSubmitting = false
+          console.error('创建商品失败:', err)
+          uni.showToast({ title: '发布失败', icon: 'none' })
+        })
+      }
+    }
+  }
+}
+</script>
+
+
+<style lang="scss" scoped>
+.page {
+  background-color: #f7f8fa;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+/* 导航栏 */
+.nav-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  height: 44px;
+  background-color: #0066CC;
+  padding-top: var(--status-bar-height);
+}
+
+.nav-left {
+  width: 60px;
+}
+
+.nav-back {
+  font-size: 24px;
+  color: #fff;
+}
+
+.nav-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.nav-right {
+  width: 60px;
+}
+
+/* 表单滚动区域 */
+.form-scroll {
+  flex: 1;
+  width: 100%;
+}
+
+/* 表单区块 */
+.form-section {
+  background-color: #fff;
+  margin: 12px 16px;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.section-title {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.section-title-text {
+  font-size: 16px;
+  font-weight: 700;
+  color: #333;
+}
+
+/* 表单项 */
+.form-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+
+.form-item-textarea {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.form-label {
+  width: 80px;
+  font-size: 14px;
+  color: #333;
+  flex-shrink: 0;
+}
+
+.required {
+  color: #ff4d4f;
+  margin-right: 2px;
+}
+
+.form-value {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.form-value-text {
+  font-size: 14px;
+  color: #333;
+  text-align: right;
+}
+
+.form-value-text-placeholder {
+  color: #999;
+}
+
+.form-arrow {
+  font-size: 18px;
+  color: #999;
+  margin-left: 8px;
+}
+
+.form-input {
+  flex: 1;
+  font-size: 14px;
+  color: #333;
+  text-align: right;
+  height: 40px;
+}
+
+.form-textarea {
+  width: 100%;
+  height: 80px;
+  font-size: 14px;
+  color: #333;
+  margin-top: 8px;
+  padding: 8px;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+}
+
+/* 价格输入 */
+.price-input-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  padding: 0 10px;
+  height: 40px;
+  border: 1px solid #eee;
+}
+
+.price-unit {
+  font-size: 16px;
+  color: #ff4d4f;
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.price-input {
+  width: 100%;
+  height: 40px;
+  font-size: 16px;
+  color: #333;
+  text-align: left;
+}
+
+/* 图片上传 */
+.image-upload-area {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.image-preview {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  margin-right: 12px;
+  margin-bottom: 12px;
+}
+
+.preview-img {
+  width: 100px;
+  height: 100px;
+  border-radius: 8px;
+  background-color: #f5f5f5;
+}
+
+.image-delete {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  background-color: #ff4d4f;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.delete-icon {
+  font-size: 14px;
+  color: #fff;
+}
+
+.upload-btn {
+  width: 100px;
+  height: 100px;
+  background-color: #f9f9f9;
+  border: 1px dashed #ddd;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.upload-icon {
+  font-size: 28px;
+  color: #999;
+}
+
+.upload-text {
+  font-size: 12px;
+  color: #999;
+  margin-top: 4px;
+}
+
+/* SKU管理 */
+.add-sku-btn {
+  padding: 6px 12px;
+  background-color: #e6f7ff;
+  border-radius: 14px;
+}
+
+.add-sku-text {
+  font-size: 12px;
+  color: #0066CC;
+}
+
+.sku-list {
+  margin-top: 8px;
+}
+
+.sku-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.sku-info {
+  flex: 1;
+}
+
+.sku-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #333;
+}
+
+.sku-details {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.sku-price {
+  font-size: 14px;
+  color: #ff4d4f;
+  margin-right: 16px;
+}
+
+.sku-stock {
+  font-size: 12px;
+  color: #999;
+}
+
+.sku-actions {
+  display: flex;
+  flex-direction: row;
+}
+
+.sku-action-btn {
+  padding: 4px 12px;
+  border: 1px solid #0066CC;
+  border-radius: 12px;
+  margin-left: 8px;
+}
+
+.sku-action-btn-delete {
+  border-color: #ff4d4f;
+}
+
+.sku-action-text {
+  font-size: 12px;
+  color: #0066CC;
+}
+
+.sku-action-text-delete {
+  color: #ff4d4f;
+}
+
+.empty-sku {
+  padding: 24px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-sku-text {
+  font-size: 13px;
+  color: #999;
+}
+
+/* 底部提交栏 */
+.submit-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 16px;
+  padding-bottom: 24px;
+  background-color: #fff;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.submit-btn {
+  height: 48px;
+  background-color: #0066CC;
+  border-radius: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.submit-btn-disabled {
+  background-color: #ccc;
+}
+
+.submit-btn-text {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* 弹窗遮罩 */
+.modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  width: 100%;
+  background-color: #fff;
+  border-radius: 16px 16px 0 0;
+  max-height: 500px;
+}
+
+.modal-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #333;
+}
+
+.modal-close {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-icon {
+  font-size: 24px;
+  color: #999;
+}
+
+/* 分类选择弹窗 */
+.category-modal {
+  max-height: 450px;
+}
+
+.category-list {
+  max-height: 400px;
+}
+
+.category-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.category-name {
+  font-size: 14px;
+  color: #333;
+}
+
+.category-check {
+  font-size: 16px;
+  color: #0066CC;
+}
+
+/* SKU编辑弹窗 */
+.sku-modal {
+  max-height: 600px;
+}
+
+.sku-form {
+  padding: 16px;
+}
+
+.sku-form-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.sku-form-label {
+  width: 80px;
+  font-size: 14px;
+  color: #333;
+  flex-shrink: 0;
+}
+
+.sku-form-input {
+  flex: 1;
+  height: 40px;
+  padding: 0 12px;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #333;
+}
+
+.modal-footer {
+  display: flex;
+  flex-direction: row;
+  padding: 16px;
+  border-top: 1px solid #f5f5f5;
+}
+
+.modal-btn {
+  flex: 1;
+  height: 44px;
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-btn-cancel {
+  background-color: #f5f5f5;
+  margin-right: 12px;
+}
+
+.modal-btn-confirm {
+  background-color: #0066CC;
+}
+
+.modal-btn-text {
+  font-size: 15px;
+  color: #666;
+}
+
+.modal-btn-text-confirm {
+  color: #fff;
+}
+</style>

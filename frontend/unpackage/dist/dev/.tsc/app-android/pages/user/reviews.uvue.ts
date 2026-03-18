@@ -1,0 +1,219 @@
+
+import { getMyReviews, type ReviewVO } from '@/api/review'
+
+const __sfc__ = defineComponent({
+	data() {
+		return {
+			reviews: [] as ReviewVO[],
+			pageNum: 1,
+			pageSize: 10,
+			isLoading: false,
+			hasMore: true
+		}
+	},
+	onLoad() {
+		this.loadReviews()
+	},
+	methods: {
+		goBack() {
+			uni.navigateBack()
+		},
+		goToProduct(productId : number) {
+			uni.navigateTo({
+				url: `/pages/product/detail?id=${productId}`
+			})
+		},
+		loadReviews() {
+			if (this.isLoading || !this.hasMore) return
+			
+			this.isLoading = true
+			getMyReviews(this.pageNum, this.pageSize).then((res) => {
+				const data = res.data as UTSJSONObject
+				const records = data.getArray('records')
+				const total = (data.getNumber('total') ?? 0).toInt()
+				
+				const newReviews : ReviewVO[] = []
+				if (records != null) {
+					for (let i = 0; i < records.length; i++) {
+						const item = records[i] as UTSJSONObject
+						newReviews.push({
+							id: (item.getNumber('id') ?? 0).toInt(),
+							productId: (item.getNumber('productId') ?? 0).toInt(),
+							productName: item.getString('productName') ?? '',
+							productMainImage: item.getString('productMainImage') ?? '',
+							userId: (item.getNumber('userId') ?? 0).toInt(),
+							userNickname: item.getString('userNickname') ?? '',
+							userAvatar: item.getString('userAvatar') ?? '',
+							orderId: (item.getNumber('orderId') ?? 0).toInt(),
+							rating: (item.getNumber('rating') ?? 5).toInt(),
+							content: item.getString('content') ?? '',
+							images: item.getString('images') ?? '',
+							replyContent: item.getString('replyContent'),
+							replyTime: item.getString('replyTime'),
+							status: (item.getNumber('status') ?? 1).toInt(),
+							createTime: item.getString('createTime') ?? ''
+						} as ReviewVO)
+					}
+				}
+				
+				if (this.pageNum === 1) {
+					this.reviews = newReviews
+				} else {
+					this.reviews = this.reviews.concat(newReviews)
+				}
+				
+				this.hasMore = this.reviews.length < total
+				this.pageNum++
+				this.isLoading = false
+			}).catch((err) => {
+				console.error('获取我的评价失败:', err, " at pages/user/reviews.uvue:133")
+				this.isLoading = false
+				if (this.pageNum === 1) {
+					uni.showToast({ title: '加载失败', icon: 'none' })
+				}
+			})
+		},
+		loadMore() {
+			this.loadReviews()
+		},
+		getImages(imagesStr : string) : string[] {
+			if (imagesStr == null || imagesStr == '') return []
+			try {
+				const arr = UTSAndroid.consoleDebugError(JSON.parse(imagesStr), " at pages/user/reviews.uvue:146")
+				if (Array.isArray(arr)) {
+					return arr as string[]
+				}
+			} catch (e) {
+				// not json, maybe comma separated
+				if (imagesStr.includes(',')) {
+					return imagesStr.split(',')
+				}
+			}
+			return [imagesStr]
+		},
+		previewImage(urls: string[], current: number) {
+			uni.previewImage({
+				urls: urls,
+				current: current
+			})
+		}
+	}
+})
+
+export default __sfc__
+function GenPagesUserReviewsRender(this: InstanceType<typeof __sfc__>): any | null {
+const _ctx = this
+const _cache = this.$.renderCache
+  return createElementVNode("view", utsMapOf({ class: "page-container" }), [
+    createElementVNode("view", utsMapOf({ class: "nav-bar" }), [
+      createElementVNode("view", utsMapOf({
+        class: "nav-back",
+        onClick: _ctx.goBack
+      }), [
+        createElementVNode("text", utsMapOf({ class: "back-icon" }), "‹")
+      ], 8 /* PROPS */, ["onClick"]),
+      createElementVNode("text", utsMapOf({ class: "nav-title" }), "我的评价"),
+      createElementVNode("view", utsMapOf({ class: "nav-placeholder" }))
+    ]),
+    createElementVNode("scroll-view", utsMapOf({
+      class: "review-list",
+      "scroll-y": "true",
+      onScrolltolower: _ctx.loadMore
+    }), [
+      isTrue(_ctx.reviews.length === 0 && !_ctx.isLoading)
+        ? createElementVNode("view", utsMapOf({
+            key: 0,
+            class: "empty-state"
+          }), [
+            createElementVNode("text", utsMapOf({ class: "empty-icon" }), "📝"),
+            createElementVNode("text", utsMapOf({ class: "empty-text" }), "暂无评价记录")
+          ])
+        : createCommentVNode("v-if", true),
+      createElementVNode(Fragment, null, RenderHelpers.renderList(_ctx.reviews, (item, index, __index, _cached): any => {
+        return createElementVNode("view", utsMapOf({
+          class: "review-card",
+          key: index
+        }), [
+          createElementVNode("view", utsMapOf({
+            class: "product-info",
+            onClick: () => {_ctx.goToProduct(item.productId)}
+          }), [
+            createElementVNode("image", utsMapOf({
+              class: "product-img",
+              src: item.productMainImage,
+              mode: "aspectFill"
+            }), null, 8 /* PROPS */, ["src"]),
+            createElementVNode("view", utsMapOf({ class: "product-detail" }), [
+              createElementVNode("text", utsMapOf({ class: "product-name" }), toDisplayString(item.productName), 1 /* TEXT */),
+              createElementVNode("view", utsMapOf({ class: "rating-stars" }), [
+                createElementVNode(Fragment, null, RenderHelpers.renderList(5, (i, __key, __index, _cached): any => {
+                  return createElementVNode("text", utsMapOf({
+                    class: normalizeClass(["star-icon", utsMapOf({ 'star-icon-active': i <= item.rating })]),
+                    key: i
+                  }), "★", 2 /* CLASS */)
+                }), 64 /* STABLE_FRAGMENT */)
+              ])
+            ])
+          ], 8 /* PROPS */, ["onClick"]),
+          createElementVNode("view", utsMapOf({ class: "review-content" }), [
+            createElementVNode("text", utsMapOf({ class: "content-text" }), toDisplayString(item.content), 1 /* TEXT */),
+            isTrue(item.images)
+              ? createElementVNode("view", utsMapOf({
+                  key: 0,
+                  class: "image-list"
+                }), [
+                  createElementVNode(Fragment, null, RenderHelpers.renderList(_ctx.getImages(item.images), (img, imgIdx, __index, _cached): any => {
+                    return createElementVNode("image", utsMapOf({
+                      class: "review-img",
+                      key: imgIdx,
+                      src: img,
+                      mode: "aspectFill",
+                      onClick: () => {_ctx.previewImage(_ctx.getImages(item.images), imgIdx)}
+                    }), null, 8 /* PROPS */, ["src", "onClick"])
+                  }), 128 /* KEYED_FRAGMENT */)
+                ])
+              : createCommentVNode("v-if", true)
+          ]),
+          isTrue(item.replyContent)
+            ? createElementVNode("view", utsMapOf({
+                key: 0,
+                class: "reply-box"
+              }), [
+                createElementVNode("text", utsMapOf({ class: "reply-label" }), "商家回复："),
+                createElementVNode("text", utsMapOf({ class: "reply-content" }), toDisplayString(item.replyContent), 1 /* TEXT */)
+              ])
+            : createCommentVNode("v-if", true),
+          createElementVNode("view", utsMapOf({ class: "review-footer" }), [
+            createElementVNode("text", utsMapOf({ class: "review-time" }), toDisplayString(item.createTime), 1 /* TEXT */),
+            item.status === 0
+              ? createElementVNode("text", utsMapOf({
+                  key: 0,
+                  class: "review-status"
+                }), "已隐藏")
+              : createCommentVNode("v-if", true)
+          ])
+        ])
+      }), 128 /* KEYED_FRAGMENT */),
+      isTrue(_ctx.isLoading)
+        ? createElementVNode("view", utsMapOf({
+            key: 1,
+            class: "loading-more"
+          }), [
+            createElementVNode("text", utsMapOf({ class: "loading-text" }), "加载中...")
+          ])
+        : createCommentVNode("v-if", true),
+      isTrue(!_ctx.hasMore && _ctx.reviews.length > 0)
+        ? createElementVNode("view", utsMapOf({
+            key: 2,
+            class: "no-more"
+          }), [
+            createElementVNode("text", utsMapOf({ class: "no-more-text" }), "没有更多了")
+          ])
+        : createCommentVNode("v-if", true),
+      createElementVNode("view", utsMapOf({
+        style: normalizeStyle(utsMapOf({"height":"40rpx"}))
+      }), null, 4 /* STYLE */)
+    ], 40 /* PROPS, NEED_HYDRATION */, ["onScrolltolower"])
+  ])
+}
+const GenPagesUserReviewsStyles = [utsMapOf([["page-container", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "column"], ["flex", 1], ["backgroundColor", "#f7f8fa"]]))], ["nav-bar", padStyleMapOf(utsMapOf([["height", 44], ["backgroundColor", "#ffffff"], ["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["justifyContent", "space-between"], ["paddingTop", CSS_VAR_STATUS_BAR_HEIGHT], ["paddingRight", 16], ["paddingBottom", 0], ["paddingLeft", 16], ["boxShadow", "0 1px 4px rgba(0, 0, 0, 0.05)"], ["zIndex", 100]]))], ["nav-back", padStyleMapOf(utsMapOf([["width", 40], ["height", 44], ["display", "flex"], ["alignItems", "center"]]))], ["back-icon", padStyleMapOf(utsMapOf([["fontSize", 28], ["color", "#333333"]]))], ["nav-title", padStyleMapOf(utsMapOf([["fontSize", 16], ["fontWeight", "bold"], ["color", "#333333"]]))], ["nav-placeholder", padStyleMapOf(utsMapOf([["width", 40]]))], ["review-list", padStyleMapOf(utsMapOf([["flex", 1], ["paddingTop", 12], ["paddingRight", 12], ["paddingBottom", 12], ["paddingLeft", 12]]))], ["review-card", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["borderTopLeftRadius", 12], ["borderTopRightRadius", 12], ["borderBottomRightRadius", 12], ["borderBottomLeftRadius", 12], ["paddingTop", 16], ["paddingRight", 16], ["paddingBottom", 16], ["paddingLeft", 16], ["marginBottom", 12], ["boxShadow", "0 2px 8px rgba(0, 0, 0, 0.02)"]]))], ["product-info", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["marginBottom", 12], ["paddingBottom", 12], ["borderBottomWidth", 1], ["borderBottomStyle", "solid"], ["borderBottomColor", "#f5f5f5"]]))], ["product-img", padStyleMapOf(utsMapOf([["width", 48], ["height", 48], ["borderTopLeftRadius", 6], ["borderTopRightRadius", 6], ["borderBottomRightRadius", 6], ["borderBottomLeftRadius", 6], ["backgroundColor", "#f5f5f5"], ["marginRight", 12]]))], ["product-detail", padStyleMapOf(utsMapOf([["flex", 1], ["display", "flex"], ["flexDirection", "column"], ["justifyContent", "center"]]))], ["product-name", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#333333"], ["marginBottom", 6]]))], ["rating-stars", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"]]))], ["star-icon", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#eeeeee"], ["marginRight", 2]]))], ["star-icon-active", padStyleMapOf(utsMapOf([["color", "#ff9900"]]))], ["review-content", padStyleMapOf(utsMapOf([["marginBottom", 12]]))], ["content-text", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#333333"], ["lineHeight", 1.5], ["marginBottom", 10]]))], ["image-list", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["flexWrap", "wrap"], ["marginTop", 8]]))], ["review-img", padStyleMapOf(utsMapOf([["width", 80], ["height", 80], ["borderTopLeftRadius", 6], ["borderTopRightRadius", 6], ["borderBottomRightRadius", 6], ["borderBottomLeftRadius", 6], ["marginRight", 8], ["marginBottom", 8], ["backgroundColor", "#f5f5f5"]]))], ["reply-box", padStyleMapOf(utsMapOf([["backgroundColor", "#f8f8f8"], ["paddingTop", 10], ["paddingRight", 12], ["paddingBottom", 10], ["paddingLeft", 12], ["borderTopLeftRadius", 6], ["borderTopRightRadius", 6], ["borderBottomRightRadius", 6], ["borderBottomLeftRadius", 6], ["marginBottom", 12], ["display", "flex"], ["flexDirection", "column"]]))], ["reply-label", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#666666"], ["fontWeight", "bold"], ["marginBottom", 4]]))], ["reply-content", padStyleMapOf(utsMapOf([["fontSize", 13], ["color", "#333333"], ["lineHeight", 1.4]]))], ["review-footer", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"], ["alignItems", "center"]]))], ["review-time", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"]]))], ["review-status", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#ff4d4f"], ["backgroundColor", "#ffebee"], ["paddingTop", 2], ["paddingRight", 6], ["paddingBottom", 2], ["paddingLeft", 6], ["borderTopLeftRadius", 4], ["borderTopRightRadius", 4], ["borderBottomRightRadius", 4], ["borderBottomLeftRadius", 4]]))], ["empty-state", padStyleMapOf(utsMapOf([["paddingTop", 30], ["paddingRight", 30], ["paddingBottom", 30], ["paddingLeft", 30], ["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["loading-more", padStyleMapOf(utsMapOf([["paddingTop", 30], ["paddingRight", 30], ["paddingBottom", 30], ["paddingLeft", 30], ["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["no-more", padStyleMapOf(utsMapOf([["paddingTop", 30], ["paddingRight", 30], ["paddingBottom", 30], ["paddingLeft", 30], ["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["empty-icon", padStyleMapOf(utsMapOf([["fontSize", 48], ["marginBottom", 16]]))], ["empty-text", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#999999"]]))], ["loading-text", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#999999"]]))], ["no-more-text", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#999999"]]))]])]

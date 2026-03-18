@@ -1,0 +1,64 @@
+/**
+ * 评价相关 API
+ */
+import { get, post, put, del, type ResponseDataType } from '@/utils/request';
+export type ReviewVO = {
+    id: number;
+    productId: number;
+    productName: string;
+    productMainImage: string;
+    userId: number;
+    userNickname: string;
+    userAvatar: string;
+    orderId: number;
+    rating: number;
+    content: string;
+    images: string; // JSON string array or actual string array, usually string in UTS/uni-app
+    replyContent: string | null;
+    replyTime: string | null;
+    status: number;
+    createTime: string;
+};
+export type ReviewPublishParams = {
+    productId: number;
+    orderId: number;
+    rating: number;
+    content: string;
+    images?: string; // JSON string array of images
+};
+/**
+ * 发布商品评价
+ */
+export function publishReview(data: ReviewPublishParams): Promise<ResponseDataType> {
+    const jsonData = {
+        productId: data.productId,
+        orderId: data.orderId,
+        rating: data.rating,
+        content: data.content,
+        images: data.images != null ? data.images : null
+    } as UTSJSONObject;
+    return post('/reviews', jsonData);
+}
+/**
+ * 获取商品评价列表
+ */
+export function getProductReviews(productId: number, pageNum: number = 1, pageSize: number = 10, rating: number | null = null): Promise<ResponseDataType> {
+    let url = `/reviews/product/${productId}?pageNum=${pageNum}&pageSize=${pageSize}`;
+    if (rating != null) {
+        url += `&rating=${rating}`;
+    }
+    return get(url);
+}
+/**
+ * 获取我的评价列表
+ */
+export function getMyReviews(pageNum: number = 1, pageSize: number = 10): Promise<ResponseDataType> {
+    return get(`/reviews/mine?pageNum=${pageNum}&pageSize=${pageSize}`);
+}
+/**
+ * 查询订单评价状态 (返回已评价的商品ID列表)
+ */
+export function getOrderReviewStatus(orderId: number): Promise<ResponseDataType> {
+    return get(`/reviews/order/${orderId}`);
+}
+//# sourceMappingURL=review.uts.map

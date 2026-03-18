@@ -1,0 +1,668 @@
+<template>
+  <view class="page">
+    <!-- 顶部搜索 -->
+    <view class="header">
+      <view class="search-bar" @click="handleSearch">
+        <text class="search-icon">🔍</text>
+        <input class="search-input" v-model="searchKeyword" placeholder="搜索商品" @confirm="handleSearch" />
+      </view>
+    </view>
+
+    <!-- 筛选工具栏 (吸顶) -->
+    <view class="filter-bar">
+      <!-- 分类 Tab -->
+      <scroll-view class="category-scroll" scroll-x="true" show-scrollbar="false">
+        <view class="category-tabs">
+          <view class="tab-item" @click="selectCategory('all')">
+            <text class="tab-text" :class="{ 'tab-text-active': activeCategory === 'all' }">全部</text>
+            <view class="active-line" v-if="activeCategory === 'all'"></view>
+          </view>
+          <view class="tab-item" v-for="cat in categories" :key="cat.id" 
+            @click="selectCategory(cat.id)">
+            <text class="tab-text" :class="{ 'tab-text-active': activeCategory === cat.id }">{{ cat.name }}</text>
+            <view class="active-line" v-if="activeCategory === cat.id"></view>
+          </view>
+        </view>
+      </scroll-view>
+
+      <!-- 排序 Tab -->
+      <view class="sort-tabs">
+        <view class="sort-item" :class="{ 'sort-item-active': activeSort === 'default' }" @click="selectSort('default')">
+          <text>综合</text>
+        </view>
+        <view class="sort-item" :class="{ 'sort-item-active': activeSort === 'sales' }" @click="selectSort('sales')">
+          <text>销量</text>
+        </view>
+        <view class="sort-item" :class="{ 'sort-item-active': activeSort.includes('price') }" @click="togglePriceSort">
+          <text>价格</text>
+          <view class="sort-arrows">
+            <text class="arrow arrow-up" :class="{ 'arrow-on': activeSort === 'price_asc' }">▲</text>
+            <text class="arrow" :class="{ 'arrow-on': activeSort === 'price_desc' }">▼</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 商品列表 -->
+    <scroll-view class="product-scroll" scroll-y="true" @scrolltolower="loadMore">
+      <view class="product-list">
+        <!-- 商品项 (横向卡片) -->
+        <view class="product-item" v-for="product in filteredProducts" :key="product.id" @click="goToDetail(product.id)">
+          <image class="product-img" :src="product.image" mode="aspectFill"></image>
+          <view class="product-content">
+            <view class="info-top">
+              <text class="product-name">{{ product.name }}</text>
+              <text class="product-desc">{{ product.description }}</text>
+              <view class="product-tags" v-if="hasTags(product)">
+                <text class="tag" v-for="tag in product.tags" :key="tag">{{ tag }}</text>
+              </view>
+            </view>
+            <view class="info-bottom">
+              <view class="price-box">
+                <text class="currency">¥</text>
+                <text class="price">{{ product.price }}</text>
+                <text class="origin-price" v-if="product.originalPrice">¥{{ product.originalPrice }}</text>
+              </view>
+              <view class="add-btn" @click.stop="addToCart(product)">
+                <text class="add-icon">+</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 空状态 -->
+      <view v-if="filteredProducts.length === 0 && !isLoading" class="empty-state">
+        <text class="empty-icon">📦</text>
+        <text class="empty-text">暂无相关商品</text>
+      </view>
+
+      <!-- 加载更多 -->
+      <view v-if="isLoading" class="loading-more">
+        <text class="loading-text">加载中...</text>
+      </view>
+      <view v-if="!isLoading && !hasMore && filteredProducts.length > 0" class="no-more">
+        <text class="no-more-text">没有更多了</text>
+      </view>
+    </scroll-view>
+
+    <!-- 悬浮购物车按钮 -->
+    <view class="cart-float-btn" @click="goToCart">
+      <view class="cart-icon-wrapper">
+        <text class="cart-icon">🛒</text>
+        <view class="cart-badge" v-if="cartCount > 0">{{ cartCount }}</view>
+      </view>
+    </view>
+    
+    <!-- 底部导航栏 -->
+    <BottomNav />
+  </view>
+</template>
+
+<script lang="uts">
+import BottomNav from '@/components/BottomNav.uvue'
+import { addToCart as addToCartApi, getCartCount, type CartAddParams } from '@/api/cart'
+import { getProductDetail } from '@/api/product'
+import { post } from '@/utils/request'
+
+type CategoryType = {
+  id : string
+  name : string
+}
+
+type ProductType = {
+  id : number
+  name : string
+  description : string
+  image : string
+  price : number
+  originalPrice? : number
+  sales : number
+  category : string
+  tags? : string[]
+}
+
+export default {
+  components: {
+    BottomNav
+  },
+  data() {
+    return {
+      searchKeyword: '',
+      activeCategory: 'all',
+      activeSort: 'default', // default, sales, price_asc, price_desc
+      cartCount: 0,
+      isLoading: false,
+      hasMore: true,
+      pageNum: 1,
+      pageSize: 20,
+      listType: '', // special, discount, new, recommend
+      categoryId: 0,
+      categories: [
+        { id: 'vegetable', name: '蔬菜' },
+        { id: 'fruit', name: '水果' },
+        { id: 'meat', name: '肉禽' },
+        { id: 'seafood', name: '水产' },
+        { id: 'dairy', name: '乳品' },
+        { id: 'snack', name: '零食' }
+      ] as CategoryType[],
+      products: [] as ProductType[], // 原始数据
+      displayProducts: [] as ProductType[] // 展示数据 (本Demo简单起见，主要通过计算属性过滤，实际应后端分页)
+    }
+  },
+  onShow() {
+    uni.$emit('bottomNavRefresh')
+  },
+  computed: {
+    filteredProducts() : ProductType[] {
+      // 直接返回products，排序和筛选由后端处理
+      return this.products
+    }
+  },
+  onLoad(options) {
+    // 使用 UTSJSONObject 兼容 UTS 语法
+    const opts = options as UTSJSONObject
+    
+    // 接收搜索关键词
+    const keyword = opts.get('keyword')
+    if (keyword != null) {
+      this.searchKeyword = keyword as string
+    }
+    
+    // 接收列表类型（special, discount, new, recommend）
+    const type = opts.get('type')
+    if (type != null) {
+      this.listType = type as string
+    }
+    
+    // 接收分类ID
+    const categoryId = opts.get('categoryId')
+    if (categoryId != null) {
+      this.categoryId = parseInt(categoryId as string)
+    }
+    
+    // 兼容旧的category参数
+    const category = opts.get('category')
+    if (category != null) {
+      this.activeCategory = category as string
+    }
+    
+    this.loadData()
+    this.updateCartCount()
+  },
+  methods: {
+    // 检查商品是否有标签
+    hasTags(product : ProductType) : boolean {
+      const tags = product.tags
+      return tags != null && tags.length > 0
+    },
+    loadData() {
+      this.isLoading = true
+      
+      // 构建搜索参数
+      const params = {
+        pageNum: this.pageNum,
+        pageSize: this.pageSize,
+        status: 1
+      } as UTSJSONObject
+      
+      // 添加搜索关键词
+      if (this.searchKeyword != '') {
+        params.set('keyword', this.searchKeyword)
+      }
+      
+      // 添加分类ID
+      if (this.categoryId > 0) {
+        params.set('categoryId', this.categoryId)
+      }
+      
+      // 根据列表类型添加筛选条件
+      if (this.listType === 'special') {
+        // 县域特色 - 可以根据实际业务添加特定标签
+      } else if (this.listType === 'discount') {
+        // 限时特惠 - 筛选有折扣的商品
+      } else if (this.listType === 'new') {
+        params.set('isNew', 1)
+      } else if (this.listType === 'recommend') {
+        params.set('isRecommended', 1)
+      }
+      
+      // 添加排序参数
+      if (this.activeSort === 'sales') {
+        params.set('sortBy', 'sales')
+        params.set('sortOrder', 'desc')
+      } else if (this.activeSort === 'price_asc') {
+        params.set('sortBy', 'price')
+        params.set('sortOrder', 'asc')
+      } else if (this.activeSort === 'price_desc') {
+        params.set('sortBy', 'price')
+        params.set('sortOrder', 'desc')
+      }
+      
+      // 调用后端搜索接口
+      post('/products/search', params).then((res) => {
+        const data = res.data as UTSJSONObject
+        const records = data.getArray('records')
+        if (records != null && records.length > 0) {
+          const products : ProductType[] = []
+          for (let i = 0; i < records.length; i++) {
+            const item = records[i] as UTSJSONObject
+            const tags : string[] = []
+            const isNew = item.getBoolean('isNew') ?? false
+            const isHot = item.getBoolean('isHot') ?? false
+            const isRecommended = item.getBoolean('isRecommended') ?? false
+            
+            if (isNew) tags.push('新品')
+            if (isHot) tags.push('热销')
+            if (isRecommended) tags.push('推荐')
+            
+            products.push({
+              id: (item.getNumber('id') ?? 0).toInt(),
+              name: item.getString('productName') ?? '',
+              description: item.getString('description') ?? '',
+              image: item.getString('mainImage') ?? '',
+              price: item.getNumber('currentPrice') ?? 0,
+              originalPrice: item.getNumber('originalPrice'),
+              sales: (item.getNumber('salesVolume') ?? 0).toInt(),
+              category: 'all',
+              tags: tags
+            } as ProductType)
+          }
+          this.products = products
+        }
+        this.isLoading = false
+      }).catch((err) => {
+        console.error('获取商品列表失败:', err)
+        this.isLoading = false
+      })
+    },
+    handleSearch() {
+      // 重新加载数据
+      this.pageNum = 1
+      this.products = []
+      this.loadData()
+    },
+    selectCategory(id : string) {
+      this.activeCategory = id
+    },
+    selectSort(type : string) {
+      this.activeSort = type
+      // 重新加载数据
+      this.pageNum = 1
+      this.products = []
+      this.loadData()
+    },
+    togglePriceSort() {
+      if (this.activeSort === 'price_asc') {
+        this.activeSort = 'price_desc'
+      } else {
+        this.activeSort = 'price_asc'
+      }
+      // 重新加载数据
+      this.pageNum = 1
+      this.products = []
+      this.loadData()
+    },
+    loadMore() {
+      // 实际应加载更多页数据
+      if (!this.isLoading) {
+        console.log('Load More...')
+      }
+    },
+    goToDetail(id : number) {
+      uni.navigateTo({ url: `/pages/product/detail?id=${id}` })
+    },
+    addToCart(product : ProductType) {
+      // 先获取商品详情以获取SKU ID
+      getProductDetail(product.id).then((res) => {
+        const data = res.data as UTSJSONObject
+        let skuId = product.id // 默认使用商品ID
+        
+        // 尝试获取第一个SKU的ID
+        const skuArr = data.getArray('skuList')
+        if (skuArr != null && skuArr.length > 0) {
+          const firstSku = skuArr[0] as UTSJSONObject
+          skuId = (firstSku.getNumber('id') ?? product.id).toInt()
+        }
+        
+        const params : CartAddParams = {
+          productId: product.id,
+          skuId: skuId,
+          quantity: 1
+        }
+        console.log('添加购物车参数:', JSON.stringify(params))
+        
+        // 嵌套调用添加购物车API
+        addToCartApi(params).then((_addRes) => {
+          uni.showToast({ title: '已加入购物车', icon: 'success' })
+          this.cartCount++
+          uni.$emit('bottomNavRefresh')
+        }).catch((addErr) => {
+          console.error('添加购物车失败:', addErr)
+          uni.showToast({ title: '添加失败', icon: 'none' })
+        })
+      }).catch((err) => {
+        console.error('获取商品详情失败:', err)
+        uni.showToast({ title: '添加失败', icon: 'none' })
+      })
+    },
+    goToCart() {
+      uni.navigateTo({ url: '/pages/cart/index' })
+    },
+    updateCartCount() {
+      // 从API获取购物车数量
+      getCartCount().then((res) => {
+        const count = (res.data as number | null) ?? 0
+        this.cartCount = count as number
+      }).catch((err) => {
+        console.error('获取购物车数量失败:', err)
+        this.cartCount = 0
+      })
+    }
+  }
+}
+</script>
+
+<style lang="scss" scoped>
+.page {
+  background-color: #f7f8fa;
+  /* 用 flex:1 代替 100vh，避免 uvue 报错 */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 顶部搜索 */
+.header {
+  background-color: #fff;
+  padding: 8px 16px;
+  /* 拆解 calc，保留状态栏高度 */
+  padding-top: var(--status-bar-height);
+}
+
+.search-bar {
+  background-color: #f2f2f2;
+  border-radius: 20px;
+  height: 36px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 0 12px;
+  
+  .search-icon {
+    font-size: 16px;
+    color: #999;
+    margin-right: 8px;
+  }
+  
+  .search-input {
+    flex: 1;
+    font-size: 14px;
+    color: #333;
+  }
+}
+
+/* 筛选工具栏 */
+.filter-bar {
+  background-color: #fff;
+  border-bottom: 1px solid #eee;
+  z-index: 10;
+}
+
+.category-scroll {
+  white-space: nowrap;
+  border-bottom: 1px solid #f9f9f9;
+}
+
+.category-tabs {
+  display: flex;
+  flex-direction: row;
+  padding: 0 8px;
+}
+
+.tab-item {
+  position: relative;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.tab-text {
+  font-size: 14px;
+  color: #666;
+}
+
+.tab-text-active {
+  color: #0066CC;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.active-line {
+  position: absolute;
+  bottom: 6px;
+  width: 20px;
+  height: 3px;
+  background-color: #0066CC;
+  border-radius: 2px;
+}
+
+.sort-tabs {
+  display: flex;
+  flex-direction: row;
+  height: 40px;
+  align-items: center;
+}
+
+.sort-item {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: #666;
+}
+
+.sort-item-active {
+  color: #0066CC;
+  font-weight: 400;
+}
+
+.sort-arrows {
+  display: flex;
+  flex-direction: column;
+  margin-left: 4px;
+}
+
+.arrow {
+  font-size: 8px;
+  line-height: 8px;
+  color: #ccc;
+}
+
+.arrow-on {
+  color: #0066CC;
+}
+
+.arrow-up {
+  margin-bottom: -1px;
+}
+
+/* 商品列表 */
+.product-scroll {
+  flex: 1;
+  background-color: #f7f8fa;
+}
+
+.product-list {
+  padding: 10px 12px;
+}
+
+.product-item {
+  display: flex;
+  flex-direction: row;
+  background-color: #fff;
+  border-radius: 12px;
+  padding: 10px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.02);
+  
+  .product-img {
+    width: 100px;
+    height: 100px;
+    border-radius: 8px;
+    flex-shrink: 0;
+    background-color: #f9f9f9;
+  }
+  
+  .product-content {
+    flex: 1;
+    margin-left: 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    
+    .info-top {
+      .product-name {
+        font-size: 15px;
+        /* 600 改为 700，作为标题较粗显示 */
+        font-weight: 700;
+        color: #333;
+        margin-bottom: 4px;
+        overflow: hidden;
+        white-space: normal;
+        line-height: 1.4;
+        max-height: 40px;
+      }
+      
+      .product-desc {
+        font-size: 12px;
+        color: #999;
+        margin-bottom: 6px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      
+      .product-tags {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        
+        .tag {
+          font-size: 10px;
+          color: #ff4d4f;
+          border: 1px solid rgba(255, 77, 79, 0.3);
+          padding: 1px 4px;
+          border-radius: 4px;
+          background-color: rgba(255, 77, 79, 0.05);
+        }
+      }
+    }
+    
+    .info-bottom {
+      display: flex;
+      flex-direction: row;
+      align-items: flex-end;
+      justify-content: space-between;
+      
+      .price-box {
+        color: #ff4d4f;
+        
+        .currency {
+          font-size: 12px;
+          font-weight: bold;
+        }
+        
+        .price {
+          font-size: 18px;
+          font-weight: bold;
+        }
+        
+        .origin-price {
+          font-size: 11px;
+          color: #ccc;
+          margin-left: 4px;
+        opacity: 0.8;
+        }
+      }
+      
+
+      .add-btn {
+        width: 28px;
+        height: 28px;
+        background-color: #0066CC;
+        border-radius: 999px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        
+        .add-icon {
+          color: #fff;
+          font-size: 20px;
+          /* 300 改为 400 */
+          font-weight: 400;
+          margin-top: -2px;
+        }
+      }
+    }
+  }
+}
+
+.empty-state, .loading-more, .no-more {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  
+  .empty-icon {
+    font-size: 40px;
+    margin-bottom: 10px;
+  }
+  
+}
+
+.empty-text,
+.loading-text,
+.no-more-text {
+  font-size: 13px;
+  color: #999;
+}
+
+/* 悬浮购物车 */
+.cart-float-btn {
+  position: fixed;
+  right: 20px;
+  bottom: 100px;
+  width: 50px;
+  height: 50px;
+  background-color: #fff;
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  
+  .cart-icon {
+    font-size: 24px;
+  }
+  
+  .cart-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    background-color: #ff4d4f;
+    color: #fff;
+    font-size: 10px;
+    padding: 2px 5px;
+    border-radius: 10px;
+    min-width: 16px;
+    text-align: center;
+  }
+}
+</style>

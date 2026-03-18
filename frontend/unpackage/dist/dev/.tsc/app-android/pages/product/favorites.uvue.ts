@@ -1,0 +1,222 @@
+
+import { getCollectionList, uncollectProduct, clearCollections } from '@/api/product'
+
+type CollectionItem = { __$originalPosition?: UTSSourceMapPosition<"CollectionItem", "pages/product/favorites.uvue", 37, 6>;
+  collectionId : number
+  productId : number
+  productName : string
+  mainImage : string
+  currentPrice : number
+  originalPrice : number
+  stock : number
+  salesVolume : number
+  status : number
+  collectTime : string
+  inStock : boolean
+}
+
+const __sfc__ = defineComponent({
+  data() {
+    return {
+      favorites: [] as CollectionItem[],
+      loading: false,
+      pageNum: 1,
+      pageSize: 20,
+      hasMore: true
+    }
+  },
+  onLoad() {
+    this.loadFavorites()
+  },
+  onShow() {
+    // 每次显示页面时刷新数据
+    this.pageNum = 1
+    this.hasMore = true
+    this.loadFavorites()
+  },
+  onNavigationBarButtonTap(e : OnNavigationBarButtonTapOptions) {
+    // 监听导航栏按钮点击
+    if (e.index === 0) {
+      // 点击清空按钮
+      this.clearAll()
+    }
+  },
+  methods: {
+    loadFavorites() {
+      if (this.loading) return
+      
+      this.loading = true
+      uni.showLoading({ title: '加载中...' })
+      
+      getCollectionList(this.pageNum, this.pageSize, 'time', 'desc').then((result) => {
+        uni.hideLoading()
+        this.loading = false
+        
+        if (result.code === 200) {
+          const data = result.data as UTSJSONObject
+          if (data != null) {
+            const records = data.getArray('records')
+            if (records != null && records.length > 0) {
+              const items : CollectionItem[] = []
+              for (let i = 0; i < records.length; i++) {
+                const item = records[i] as UTSJSONObject
+                if (item != null) {
+                  items.push({
+                    collectionId: (item.getNumber('collectionId') ?? 0).toInt(),
+                    productId: (item.getNumber('productId') ?? 0).toInt(),
+                    productName: item.getString('productName') ?? '',
+                    mainImage: item.getString('mainImage') ?? '',
+                    currentPrice: (item.getNumber('currentPrice') ?? 0),
+                    originalPrice: (item.getNumber('originalPrice') ?? 0),
+                    stock: (item.getNumber('stock') ?? 0).toInt(),
+                    salesVolume: (item.getNumber('salesVolume') ?? 0).toInt(),
+                    status: (item.getNumber('status') ?? 1).toInt(),
+                    collectTime: item.getString('collectTime') ?? '',
+                    inStock: item.getBoolean('inStock') ?? true
+                  } as CollectionItem)
+                }
+              }
+              
+              if (this.pageNum === 1) {
+                this.favorites = items
+              } else {
+                this.favorites = this.favorites.concat(items)
+              }
+              
+              const total = (data.getNumber('total') ?? 0).toInt()
+              this.hasMore = this.favorites.length < total
+            } else {
+              if (this.pageNum === 1) {
+                this.favorites = []
+              }
+              this.hasMore = false
+            }
+          }
+        }
+      }).catch((error) => {
+        uni.hideLoading()
+        this.loading = false
+        console.error('获取收藏列表失败:', error, " at pages/product/favorites.uvue:132")
+        uni.showToast({ title: '加载失败', icon: 'none' })
+      })
+    },
+    goToDetail(productId : number) {
+      uni.navigateTo({ url: `/pages/product/detail?id=${productId}` })
+    },
+    removeFavorite(productId : number) {
+      uni.showModal({
+        title: '提示',
+        content: '确定取消收藏吗？',
+        success: (res) => {
+          if (res.confirm) {
+            uncollectProduct(productId).then((result) => {
+              if (result.code === 200) {
+                // 从列表中移除
+                this.favorites = this.favorites.filter((item : CollectionItem) : boolean => item.productId !== productId)
+                uni.showToast({ title: '已取消收藏', icon: 'none' })
+                // 触发刷新事件，更新个人中心的收藏数
+                uni.$emit('refreshFavorites')
+              } else {
+                uni.showToast({ title: result.message ?? '操作失败', icon: 'none' })
+              }
+            }).catch((error) => {
+              console.error('取消收藏失败:', error, " at pages/product/favorites.uvue:156")
+              uni.showToast({ title: '操作失败', icon: 'none' })
+            })
+          }
+        }
+      })
+    },
+    goShopping() {
+      uni.switchTab({ url: '/pages/index/index' })
+    },
+    clearAll() {
+      uni.showModal({
+        title: '提示',
+        content: '确定清空所有收藏吗？此操作不可撤销。',
+        success: (res) => {
+          if (res.confirm) {
+            clearCollections().then((result) => {
+              if (result.code === 200) {
+                this.favorites = []
+                uni.showToast({ title: '已清空收藏夹', icon: 'success' })
+                // 触发刷新事件，更新个人中心的收藏数
+                uni.$emit('refreshFavorites')
+              } else {
+                uni.showToast({ title: result.message ?? '操作失败', icon: 'none' })
+              }
+            }).catch((error) => {
+              console.error('清空收藏夹失败:', error, " at pages/product/favorites.uvue:182")
+              uni.showToast({ title: '操作失败', icon: 'none' })
+            })
+          }
+        }
+      })
+    }
+  }
+})
+
+export default __sfc__
+function GenPagesProductFavoritesRender(this: InstanceType<typeof __sfc__>): any | null {
+const _ctx = this
+const _cache = this.$.renderCache
+  return createElementVNode("view", utsMapOf({ class: "favorites-page" }), [
+    createElementVNode("scroll-view", utsMapOf({
+      class: "favorites-scroll",
+      "scroll-y": "true",
+      "show-scrollbar": false
+    }), [
+      createElementVNode("view", utsMapOf({ class: "favorites-list" }), [
+        createElementVNode(Fragment, null, RenderHelpers.renderList(_ctx.favorites, (item, __key, __index, _cached): any => {
+          return createElementVNode("view", utsMapOf({
+            class: "favorite-card",
+            key: item.collectionId,
+            onClick: () => {_ctx.goToDetail(item.productId)}
+          }), [
+            createElementVNode("image", utsMapOf({
+              class: "goods-img",
+              src: item.mainImage,
+              mode: "aspectFill"
+            }), null, 8 /* PROPS */, ["src"]),
+            createElementVNode("view", utsMapOf({ class: "goods-info" }), [
+              createElementVNode("text", utsMapOf({ class: "goods-name" }), toDisplayString(item.productName), 1 /* TEXT */),
+              createElementVNode("text", utsMapOf({ class: "goods-desc" }), toDisplayString(item.inStock ? '有货' : '暂时缺货') + " · 已售" + toDisplayString(item.salesVolume) + "件", 1 /* TEXT */),
+              createElementVNode("view", utsMapOf({ class: "goods-bottom" }), [
+                createElementVNode("view", utsMapOf({ class: "price-box" }), [
+                  createElementVNode("text", utsMapOf({ class: "currency" }), "¥"),
+                  createElementVNode("text", utsMapOf({ class: "price" }), toDisplayString(item.currentPrice.toFixed(2)), 1 /* TEXT */),
+                  item.originalPrice > item.currentPrice
+                    ? createElementVNode("text", utsMapOf({
+                        key: 0,
+                        class: "original-price"
+                      }), "¥" + toDisplayString(item.originalPrice.toFixed(2)), 1 /* TEXT */)
+                    : createCommentVNode("v-if", true)
+                ]),
+                createElementVNode("view", utsMapOf({
+                  class: "action-btn",
+                  onClick: withModifiers(() => {_ctx.removeFavorite(item.productId)}, ["stop"])
+                }), [
+                  createElementVNode("text", utsMapOf({ class: "btn-text" }), "取消收藏")
+                ], 8 /* PROPS */, ["onClick"])
+              ])
+            ])
+          ], 8 /* PROPS */, ["onClick"])
+        }), 128 /* KEYED_FRAGMENT */)
+      ]),
+      _ctx.favorites.length === 0
+        ? createElementVNode("view", utsMapOf({
+            key: 0,
+            class: "empty-state"
+          }), [
+            createElementVNode("text", utsMapOf({ class: "empty-icon" }), "❤️"),
+            createElementVNode("text", utsMapOf({ class: "empty-text" }), "暂无收藏商品"),
+            createElementVNode("button", utsMapOf({
+              class: "go-shopping-btn",
+              onClick: _ctx.goShopping
+            }), "去逛逛", 8 /* PROPS */, ["onClick"])
+          ])
+        : createCommentVNode("v-if", true)
+    ])
+  ])
+}
+const GenPagesProductFavoritesStyles = [utsMapOf([["favorites-page", padStyleMapOf(utsMapOf([["backgroundColor", "#F5F7FA"], ["display", "flex"], ["flexDirection", "column"]]))], ["favorites-scroll", padStyleMapOf(utsMapOf([["flex", 1], ["width", "100%"]]))], ["favorites-list", padStyleMapOf(utsMapOf([["paddingTop", 12], ["paddingRight", 16], ["paddingBottom", 12], ["paddingLeft", 16], ["display", "flex"], ["flexDirection", "column"]]))], ["favorite-card", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["borderTopLeftRadius", 12], ["borderTopRightRadius", 12], ["borderBottomRightRadius", 12], ["borderBottomLeftRadius", 12], ["paddingTop", 12], ["paddingRight", 12], ["paddingBottom", 12], ["paddingLeft", 12], ["marginBottom", 12], ["display", "flex"], ["flexDirection", "row"], ["boxShadow", "0 2px 8px rgba(0, 0, 0, 0.02)"]]))], ["goods-img", padStyleMapOf(utsMapOf([["width", "200rpx"], ["height", "200rpx"], ["borderTopLeftRadius", 8], ["borderTopRightRadius", 8], ["borderBottomRightRadius", 8], ["borderBottomLeftRadius", 8], ["backgroundColor", "#F5F7FA"], ["marginRight", "20rpx"]]))], ["goods-info", padStyleMapOf(utsMapOf([["flex", 1], ["display", "flex"], ["flexDirection", "column"], ["justifyContent", "space-between"], ["paddingTop", 4], ["paddingRight", 0], ["paddingBottom", 4], ["paddingLeft", 0]]))], ["goods-name", padStyleMapOf(utsMapOf([["fontSize", 15], ["fontWeight", "700"], ["color", "#333333"], ["marginBottom", 6], ["lineHeight", 1.4], ["height", 42], ["overflow", "hidden"]]))], ["goods-desc", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"], ["marginBottom", "auto"], ["lineHeight", 1.4], ["height", 34], ["overflow", "hidden"]]))], ["goods-bottom", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"], ["alignItems", "center"]]))], ["price-box", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["color", "#FF4D4F"]]))], ["currency", padStyleMapOf(utsMapOf([["fontSize", 12], ["fontWeight", "bold"]]))], ["price", padStyleMapOf(utsMapOf([["fontSize", 18], ["fontWeight", "bold"]]))], ["original-price", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"], ["marginLeft", 8]]))], ["action-btn", padStyleMapOf(utsMapOf([["paddingTop", 4], ["paddingRight", 12], ["paddingBottom", 4], ["paddingLeft", 12], ["borderTopWidth", 1], ["borderRightWidth", 1], ["borderBottomWidth", 1], ["borderLeftWidth", 1], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#EEEEEE"], ["borderRightColor", "#EEEEEE"], ["borderBottomColor", "#EEEEEE"], ["borderLeftColor", "#EEEEEE"], ["borderTopLeftRadius", 14], ["borderTopRightRadius", 14], ["borderBottomRightRadius", 14], ["borderBottomLeftRadius", 14], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["btn-text", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"]]))], ["empty-state", padStyleMapOf(utsMapOf([["paddingTop", 80], ["paddingRight", 0], ["paddingBottom", 80], ["paddingLeft", 0], ["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["empty-icon", padStyleMapOf(utsMapOf([["fontSize", 48], ["marginBottom", 16], ["color", "#C0C0C0"]]))], ["empty-text", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#999999"], ["marginBottom", 24]]))], ["go-shopping-btn", padStyleMapOf(utsMapOf([["backgroundColor", "#0066CC"], ["color", "#ffffff"], ["fontSize", 14], ["paddingTop", 0], ["paddingRight", 32], ["paddingBottom", 0], ["paddingLeft", 32], ["height", 40], ["lineHeight", "40px"], ["borderTopLeftRadius", 20], ["borderTopRightRadius", 20], ["borderBottomRightRadius", 20], ["borderBottomLeftRadius", 20]]))]])]

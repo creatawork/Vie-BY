@@ -1,0 +1,1549 @@
+<template>
+	<view class="profile-page profile-container">
+		<!-- Background Shapes -->
+		<view class="bg-shape bg-shape-1"></view>
+		<view class="bg-shape bg-shape-2"></view>
+		
+		<!-- Header with Settings -->
+		<view class="header">
+			<!-- 身份切换按钮（仅卖家可见） -->
+			<view class="switch-role-btn" v-if="isSeller" @tap="handleSwitchRole">
+				<text class="switch-icon">🔄</text>
+				<text class="switch-text">{{ currentRole == 'seller' ? '切换买家' : '切换卖家' }}</text>
+			</view>
+			<view class="header-spacer" v-else></view>
+			<view class="settings-btn" @tap="handleSettings">
+				<text class="settings-icon">⚙️</text>
+			</view>
+		</view>
+
+		<!-- Main Content -->
+		<scroll-view class="main-content" scroll-y="true" :show-scrollbar="false">
+			<!-- ==================== 买家视图 ==================== -->
+			<view v-if="currentRole == 'buyer'">
+				<!-- 买家模式状态提示 -->
+				<view class="role-status-bar buyer-mode">
+					<text class="role-icon">🛒</text>
+					<text class="role-text">买家模式</text>
+				</view>
+				
+				<!-- User Profile Card -->
+				<view class="profile-card">
+					<view class="profile-top">
+						<view class="avatar-wrapper" @tap="handleUploadAvatar">
+							<image 
+								:key="imageKey"
+								:src="getAvatarUrl()"
+								class="avatar"
+								mode="aspectFill"
+								@error="handleImageError"
+							/>
+							<view class="avatar-edit-badge">
+								<text class="edit-icon">📷</text>
+							</view>
+						</view>
+						<view class="profile-info">
+							<text class="nickname">{{ getNickname() }}</text>
+							<text class="username">用户名: {{ userInfo.username }}</text>
+							<view class="user-id-tag">
+								<text class="user-id">ID: {{ getUserId() }}</text>
+							</view>
+						</view>
+					</view>
+					
+					<!-- Stats Row -->
+					<view class="stats-row">
+						<view class="stat-item" @tap="handleNavigate('orders')">
+							<text class="stat-num">{{ stats.orders }}</text>
+							<text class="stat-name">全部订单</text>
+						</view>
+						<view class="stat-item" @tap="handleNavigate('pending')">
+							<text class="stat-num">{{ stats.pending }}</text>
+							<text class="stat-name">待付款</text>
+						</view>
+						<view class="stat-item" @tap="handleNavigate('shipped')">
+							<text class="stat-num">{{ stats.shipped }}</text>
+							<text class="stat-name">待收货</text>
+						</view>
+						<view class="stat-item" @tap="handleNavigate('favorites')">
+							<text class="stat-num">{{ stats.favorites }}</text>
+							<text class="stat-name">收藏夹</text>
+						</view>
+					</view>
+				</view>
+
+				<!-- Menu Grid -->
+				<view class="section-title">我的服务</view>
+				<view class="menu-grid">
+					<view class="menu-item" @tap="handleNavigate('addresses')">
+						<view class="menu-icon-box menu-icon-box-green">
+							<text class="menu-icon">📍</text>
+						</view>
+						<text class="menu-label">地址管理</text>
+					</view>
+
+					<view class="menu-item" @tap="handleNavigate('coupons')">
+						<view class="menu-icon-box menu-icon-box-orange">
+							<text class="menu-icon">🎟️</text>
+						</view>
+						<text class="menu-label">优惠券</text>
+					</view>
+
+					<view class="menu-item" @tap="handleNavigate('history')">
+						<view class="menu-icon-box menu-icon-box-purple">
+							<text class="menu-icon">📚</text>
+						</view>
+						<text class="menu-label">浏览历史</text>
+					</view>
+
+					<view class="menu-item" @tap="handleNavigate('reviews')">
+						<view class="menu-icon-box menu-icon-box-cyan">
+							<text class="menu-icon">⭐</text>
+						</view>
+						<text class="menu-label">我的评价</text>
+					</view>
+
+					<view class="menu-item" @tap="handleNavigate('wallet')">
+						<view class="menu-icon-box menu-icon-box-red">
+							<text class="menu-icon">💰</text>
+						</view>
+						<text class="menu-label">我的钱包</text>
+					</view>
+					
+					<view class="menu-item" @tap="handleChangePassword">
+						<view class="menu-icon-box menu-icon-box-indigo">
+							<text class="menu-icon">🔒</text>
+						</view>
+						<text class="menu-label">修改密码</text>
+					</view>
+
+					<view class="menu-item" @tap="handleNavigate('service')">
+						<view class="menu-icon-box menu-icon-box-teal">
+							<text class="menu-icon">💬</text>
+						</view>
+						<text class="menu-label">客服</text>
+					</view>
+
+					<!-- 成为商家入口（仅非卖家可见） -->
+					<view class="menu-item" v-if="!isSeller" @tap="handleBecomeSeller">
+						<view class="menu-icon-box menu-icon-box-blue">
+							<text class="menu-icon">🏪</text>
+						</view>
+						<text class="menu-label">成为商家</text>
+					</view>
+				</view>
+				
+				<!-- 买家提示 -->
+				<view class="buyer-tips">
+					<view class="tips-content">
+						<text class="tips-title">💡 购物小贴士</text>
+						<text class="tips-desc">收藏喜欢的商品，及时关注优惠活动，享受更多实惠~</text>
+					</view>
+				</view>
+				
+				<!-- Logout Button -->
+				<view class="logout-btn" @tap="handleLogout">
+					<text class="logout-icon">🚪</text>
+					<text class="logout-text">退出登录</text>
+				</view>
+			</view>
+			
+			<!-- ==================== 卖家视图 ==================== -->
+			<view v-if="currentRole == 'seller'">
+				<!-- 商家模式状态提示 -->
+				<view class="role-status-bar seller-mode">
+					<text class="role-icon">🏪</text>
+					<text class="role-text role-text-seller">商家模式</text>
+				</view>
+				
+				<!-- 店铺信息卡片 - 现代化设计 -->
+				<view class="seller-profile-card">
+					<!-- 顶部背景装饰 -->
+					<view class="seller-card-bg"></view>
+					
+					<!-- 主要内容区 -->
+					<view class="seller-main-content">
+						<!-- 头像和基本信息 -->
+						<view class="seller-profile-header">
+							<view class="seller-avatar-box">
+								<image 
+									:key="imageKey"
+									:src="getAvatarUrl()"
+									class="seller-avatar-img"
+									mode="aspectFill"
+									@error="handleImageError"
+								/>
+								<view class="seller-verify-badge">
+									<text class="verify-icon">✓</text>
+								</view>
+							</view>
+							
+							<view class="seller-basic-info">
+								<view class="shop-name-row">
+									<text class="shop-name-text">{{ shopName != '' ? shopName : '我的店铺' }}</text>
+									<view class="shop-level-tag">
+										<text class="level-text">Lv5</text>
+									</view>
+								</view>
+								<text class="seller-id-text">ID: {{ userInfo.username }}</text>
+								<view class="seller-rating-row">
+									<text class="rating-stars">⭐⭐⭐⭐⭐</text>
+									<text class="rating-score">4.8</text>
+									<text class="rating-count">(128评价)</text>
+								</view>
+							</view>
+						</view>
+						
+						<!-- 数据统计卡片组 -->
+						<view class="seller-stats-grid">
+							<view class="stat-card stat-card-1">
+								<text class="stat-icon">📦</text>
+								<text class="stat-number">{{ sellerOrderStats['totalCount'] ?? 0 }}</text>
+								<text class="stat-label">订单总数</text>
+							</view>
+							<view class="stat-card stat-card-2">
+								<text class="stat-icon">🚚</text>
+								<text class="stat-number">{{ sellerOrderStats['waitShipCount'] ?? 0 }}</text>
+								<text class="stat-label">待发货</text>
+							</view>
+							<view class="stat-card stat-card-3">
+								<text class="stat-icon">✅</text>
+								<text class="stat-number">{{ sellerOrderStats['finishedCount'] ?? 0 }}</text>
+								<text class="stat-label">已完成</text>
+							</view>
+						</view>
+					</view>
+				</view>
+				
+				<!-- 管理员入口（仅管理员可见） -->
+				<view v-if="isAdmin" class="admin-entry-section">
+					<view class="admin-entry-card" @tap="handleAdminNavigate">
+						<view class="admin-entry-left">
+							<text class="admin-entry-icon">👑</text>
+							<view class="admin-entry-info">
+								<text class="admin-entry-title">管理员后台</text>
+								<text class="admin-entry-desc">平台管理与数据监控</text>
+							</view>
+						</view>
+						<text class="admin-entry-arrow">→</text>
+					</view>
+				</view>
+				
+				<!-- 商家服务菜单 -->
+				<view class="section-title">商家服务</view>
+				<view class="menu-grid">
+					<view class="menu-item" @tap="handleSellerNavigate('products')">
+						<view class="menu-icon-box menu-icon-box-blue">
+							<text class="menu-icon">📦</text>
+						</view>
+						<text class="menu-label">商品管理</text>
+					</view>
+					
+					<view class="menu-item" @tap="handleSellerNavigate('inventory')">
+						<view class="menu-icon-box menu-icon-box-green">
+							<text class="menu-icon">📊</text>
+						</view>
+						<text class="menu-label">库存管理</text>
+					</view>
+
+					<view class="menu-item" @tap="handleSellerNavigate('statistics')">
+						<view class="menu-icon-box menu-icon-box-purple">
+							<text class="menu-icon">📈</text>
+						</view>
+						<text class="menu-label">销售统计</text>
+					</view>
+					
+					<view class="menu-item" @tap="handleSellerNavigate('account')">
+						<view class="menu-icon-box menu-icon-box-red">
+							<text class="menu-icon">💰</text>
+						</view>
+						<text class="menu-label">商家账户</text>
+					</view>
+					
+					<view class="menu-item" @tap="handleSellerNavigate('reviews')">
+						<view class="menu-icon-box menu-icon-box-orange">
+							<text class="menu-icon">⭐</text>
+						</view>
+						<text class="menu-label">评价管理</text>
+					</view>
+
+				</view>
+				
+				<!-- 商家提示 -->
+				<view class="seller-tips">
+					<view class="tips-content">
+						<text class="tips-title">💡 经营小贴士</text>
+						<text class="tips-desc">及时处理订单，保持良好的发货速度可以提升店铺评分哦~</text>
+					</view>
+				</view>
+				
+				<!-- Logout Button -->
+				<view class="logout-btn" @tap="handleLogout">
+					<text class="logout-icon">🚪</text>
+					<text class="logout-text">退出登录</text>
+				</view>
+			</view>
+		</scroll-view>
+		
+		<!-- 底部导航栏 -->
+		<BottomNav />
+	</view>
+</template>
+
+<script lang="uts">
+import { getUserProfile, logout, uploadAvatar } from '@/api/user'
+import { getSellerStatus, becomeSeller, getRevenueStatistics, getOrderOverview } from '@/api/seller'
+import type { ResponseDataType } from '@/utils/request'
+import { getOrderCount } from '@/api/order'
+import { getCollectionCount } from '@/api/product'
+import { getSellerOrderCount } from '@/api/sellerOrder'
+import BottomNav from '@/components/BottomNav.uvue'
+
+type UserInfoType = {
+	id : string | number
+	avatar : string
+	username : string
+	email : string
+	phone : string
+	nickname : string
+}
+
+type StatsType = {
+	orders : number
+	pending : number
+	shipped : number
+	favorites : number
+}
+
+// 卖家经营数据类型（保留用于其他统计）
+type SellerStatsType = {
+	todaySales : number      // 今日销售额
+	pendingShip : number     // 待发货订单数
+	pendingSettle : number   // 待结算金额
+	productCount : number    // 在售商品数量
+}
+
+// 商家订单统计类型
+type SellerOrderStatsType = {
+	unpaid : number          // 待支付订单数
+	unshipped : number       // 待发货订单数
+	shipped : number         // 待收货订单数（已发货）
+	completed : number       // 已完成订单数
+	cancelled : number       // 已取消订单数
+	total : number           // 订单总数
+}
+
+export default {
+	components: {
+		BottomNav
+	},
+	data() {
+		return {
+			userInfo: {
+				id: '12345678',
+				avatar: '',
+				username: 'testuser',
+				email: 'user@example.com',
+				phone: '13800138000',
+				nickname: '测试用户'
+			} as UserInfoType,
+			stats: {
+				orders: 5,
+				pending: 1,
+				shipped: 2,
+				favorites: 12
+			} as StatsType,
+			defaultAvatar: '/static/logo.png',
+			isLoading: false,
+			imageKey: 0,
+			// 卖家相关数据属性
+			isSeller: false,                           // 是否已开通卖家
+			isAdmin: false,                            // 是否是管理员
+			currentRole: 'buyer' as string,            // 当前视图身份 'buyer' | 'seller'
+			shopName: '' as string,                    // 店铺名称
+			sellerStats: {
+				todaySales: 0,
+				pendingShip: 0,
+				pendingSettle: 0,
+				productCount: 0
+			} as SellerStatsType,
+			sellerOrderStats: {
+				waitShipCount: 0,
+				finishedCount: 0,
+				totalCount: 0
+			} as UTSJSONObject
+		}
+	},
+	onLoad() {
+		this.checkLoginStatus()
+		
+		// 监听收藏刷新事件
+		uni.$on('refreshFavorites', this.loadCollectionCount)
+	},
+	onUnload() {
+		// 移除事件监听
+		uni.$off('refreshFavorites', this.loadCollectionCount)
+	},
+	onShow() {
+		// 刷新底部导航栏
+		uni.$emit('bottomNavRefresh')
+		
+		const userInfo = uni.getStorageSync('user_info')
+		if (userInfo != null && userInfo != '') {
+			try {
+				const infoStr = userInfo as string
+				const parsed = JSON.parse(infoStr) as UTSJSONObject
+				// 更新用户信息
+				const id = parsed.getNumber('id')
+				const avatar = parsed.getString('avatar')
+				const username = parsed.getString('username')
+				const email = parsed.getString('email')
+				const phone = parsed.getString('phone')
+				const nickname = parsed.getString('nickname')
+				
+				this.userInfo = {
+					id: id != null ? id.toInt() : this.userInfo.id,
+					avatar: avatar != null ? avatar : this.userInfo.avatar,
+					username: username != null ? username : this.userInfo.username,
+					email: email != null ? email : this.userInfo.email,
+					phone: phone != null ? phone : this.userInfo.phone,
+					nickname: nickname != null ? nickname : this.userInfo.nickname
+				} as UserInfoType
+				
+				// 检查卖家身份状态
+				this.checkSellerStatus()
+				
+				// 刷新订单统计数据
+				this.loadOrderStats()
+			} catch (e) {
+				console.error(e)
+			}
+		} else {
+			this.checkLoginStatus()
+		}
+	},
+	methods: {
+		getAvatarUrl() : string {
+			return this.userInfo.avatar != '' ? this.userInfo.avatar : this.defaultAvatar
+		},
+		getNickname() : string {
+			return this.userInfo.nickname != '' ? this.userInfo.nickname : '未设置昵称'
+		},
+		getUserId() : string {
+			const id = this.userInfo.id
+			return id != null && id != '' ? id.toString() : '12345678'
+		},
+		// 检查卖家身份状态
+		checkSellerStatus() {
+			// 从本地存储读取卖家状态和管理员状态
+			const userInfoStr = uni.getStorageSync('user_info')
+			if (userInfoStr != null && userInfoStr != '') {
+				try {
+					const parsed = JSON.parse(userInfoStr as string) as UTSJSONObject
+					const sellerStatus = parsed.getBoolean('isSeller')
+					const storedShopName = parsed.getString('shopName')
+					const roleCodes = parsed.getArray('roleCodes')
+					
+					this.isSeller = sellerStatus == true
+					this.shopName = storedShopName != null ? storedShopName : ''
+					
+					// 检查是否是管理员（username为admin或角色包含ADMIN）
+					const username = parsed.getString('username')
+					if (username == 'admin') {
+						this.isAdmin = true
+					} else if (roleCodes != null) {
+						// 检查角色数组中是否包含管理员角色
+						for (let i = 0; i < roleCodes.length; i++) {
+							const role = roleCodes[i] as string
+							if (role == 'ADMIN' || role == 'admin') {
+								this.isAdmin = true
+								break
+							}
+						}
+					}
+				} catch (e) {
+					console.error('解析卖家状态失败:', e)
+				}
+			}
+			
+			// 从本地存储读取当前身份视图
+			const storedRole = uni.getStorageSync('current_role')
+			if (storedRole != null && storedRole != '') {
+				const roleStr = storedRole as string
+				// 如果是卖家且上次为卖家视图，自动切换到卖家视图
+				if (this.isSeller && roleStr == 'seller') {
+					this.currentRole = 'seller'
+					// 加载卖家经营数据
+					this.loadSellerStats()
+				} else {
+					this.currentRole = 'buyer'
+				}
+			} else {
+				this.currentRole = 'buyer'
+			}
+			
+			// 从服务器获取最新的卖家状态
+			getSellerStatus().then((result: ResponseDataType) => {
+				if (result.code === 200) {
+					const data = result.data as UTSJSONObject
+					if (data != null) {
+						const serverIsSeller = data.getBoolean('isSeller')
+						const serverShopName = data.getString('shopName')
+						
+						this.isSeller = serverIsSeller == true
+						this.shopName = serverShopName != null ? serverShopName : ''
+						
+						// 更新本地存储
+						const userInfoStr2 = uni.getStorageSync('user_info')
+						if (userInfoStr2 != null && userInfoStr2 != '') {
+							try {
+								const info = JSON.parse(userInfoStr2 as string) as UTSJSONObject
+								const updatedInfo = {
+									id: info.getNumber('id'),
+									username: info.getString('username'),
+									nickname: info.getString('nickname'),
+									avatar: info.getString('avatar'),
+									email: info.getString('email'),
+									phone: info.getString('phone'),
+									roleCodes: info.getAny('roleCodes'),
+									isSeller: this.isSeller,
+									shopName: this.shopName
+								} as UTSJSONObject
+								uni.setStorageSync('user_info', JSON.stringify(updatedInfo))
+							} catch (e) {
+								console.error('更新本地卖家状态失败:', e)
+							}
+						}
+						
+						// 如果是卖家且当前为卖家视图，加载经营数据
+						if (this.isSeller && this.currentRole == 'seller') {
+							this.loadSellerStats()
+						}
+					}
+				}
+			}).catch((error: Any | null) => {
+				console.error('获取卖家状态失败:', error)
+			})
+		},
+		// 切换买家/卖家视图
+		handleSwitchRole() {
+			if (!this.isSeller) {
+				uni.showToast({ title: '请先开通卖家功能', icon: 'none' })
+				return
+			}
+			
+			// 切换身份
+			if (this.currentRole == 'buyer') {
+				this.currentRole = 'seller'
+				// 加载卖家经营数据
+				this.loadSellerStats()
+			} else {
+				this.currentRole = 'buyer'
+			}
+			
+			// 保存当前身份到本地存储
+			uni.setStorageSync('current_role', this.currentRole)
+			
+			// 刷新底部导航栏
+			uni.$emit('bottomNavRefresh')
+		},
+		// 加载卖家经营数据
+		loadSellerStats() {
+			// 加载收入统计数据
+			getRevenueStatistics().then((result) => {
+				if (result.code === 200) {
+					const data = result.data as UTSJSONObject
+					if (data != null) {
+						const todaySales = data.getNumber('todaySales')
+						const pendingShip = data.getNumber('pendingShipCount')
+						const pendingSettle = data.getNumber('pendingSettleAmount')
+						const productCount = data.getNumber('productCount')
+						
+						this.sellerStats = {
+							todaySales: todaySales != null ? todaySales : 0,
+							pendingShip: pendingShip != null ? pendingShip.toInt() : 0,
+							pendingSettle: pendingSettle != null ? pendingSettle : 0,
+							productCount: productCount != null ? productCount.toInt() : 0
+						} as SellerStatsType
+					}
+				}
+			}).catch((error) => {
+				console.error('获取卖家经营数据失败:', error)
+			})
+			
+			// 加载订单统计数据
+			this.loadSellerOrderStats()
+		},
+		// 加载商家订单统计
+		loadSellerOrderStats() {
+			getOrderOverview().then((result) => {
+				if (result.code === 200) {
+					const data = result.data as UTSJSONObject
+					if (data != null) {
+						this.sellerOrderStats = data
+					}
+				}
+			}).catch((error) => {
+				console.error('获取商家订单统计失败:', error)
+			})
+		},
+		// 卖家菜单导航
+		handleSellerNavigate(type : string) {
+			const routes = new Map<string, string>([
+				['products', '/pages/seller/products'],
+				['inventory', '/pages/seller/inventory'],
+				['statistics', '/pages/seller/statistics'],
+				['account', '/pages/seller/account'],
+				['reviews', '/pages/seller/reviews']
+			])
+			
+			const route = routes.get(type)
+			if (route != null && route != '') {
+				uni.navigateTo({ url: route as string })
+			} else {
+				uni.showToast({ title: '功能开发中', icon: 'none' })
+			}
+		},
+		// 管理员后台导航
+		handleAdminNavigate() {
+			uni.navigateTo({ url: '/pages/admin/index' })
+		},
+		// 处理开通卖家功能
+		handleBecomeSeller() {
+			uni.showModal({
+				title: '开通卖家功能',
+				content: '确定要开通卖家功能吗？开通后您可以在平台上销售商品。',
+				editable: true,
+				placeholderText: '请输入店铺名称（可选）',
+				confirmText: '确认开通',
+				cancelText: '取消',
+				success: (res) => {
+					if (res.confirm) {
+						const inputShopName = res.content != null && res.content != '' ? res.content : null
+						
+						uni.showLoading({ title: '开通中...' })
+						
+						becomeSeller(inputShopName).then((result : ResponseDataType) => {
+							uni.hideLoading()
+							
+							if (result.code === 200) {
+								// 更新本地状态
+								this.isSeller = true
+								if (inputShopName != null && inputShopName != '') {
+									this.shopName = inputShopName!
+								}
+								
+								// 更新本地存储
+								const userInfoStr = uni.getStorageSync('user_info')
+								if (userInfoStr != null && userInfoStr != '') {
+									try {
+										const info = JSON.parse(userInfoStr as string) as UTSJSONObject
+										const updatedInfo = {
+											id: info.getNumber('id'),
+											username: info.getString('username'),
+											nickname: info.getString('nickname'),
+											avatar: info.getString('avatar'),
+											email: info.getString('email'),
+											phone: info.getString('phone'),
+											roleCodes: info.getAny('roleCodes'),
+											isSeller: true,
+											shopName: this.shopName
+										} as UTSJSONObject
+										uni.setStorageSync('user_info', JSON.stringify(updatedInfo))
+									} catch (e) {
+										console.error('更新本地卖家状态失败:', e)
+									}
+								}
+								
+								uni.showToast({ 
+									title: '开通成功！', 
+									icon: 'success',
+									duration: 2000
+								})
+								
+								// 刷新页面显示身份切换按钮
+								setTimeout(() => {
+									this.checkSellerStatus()
+								}, 500)
+							} else {
+								const msg = result.message != null ? result.message : '开通失败'
+								uni.showToast({ title: msg, icon: 'error' })
+							}
+						}).catch((error: Any | null) => {
+							uni.hideLoading()
+							console.error('开通卖家失败:', error)
+							uni.showToast({ title: '开通失败，请稍后重试', icon: 'error' })
+						})
+					}
+				}
+			})
+		},
+		checkLoginStatus() {
+			const token = uni.getStorageSync('auth_token')
+			if (token == null || token == '') {
+				uni.showModal({
+					title: '提示',
+					content: '请先登录后再访问个人中心',
+					showCancel: false,
+					success: () => {
+						uni.reLaunch({ url: '/pages/login/login' })
+					}
+				})
+				return
+			}
+			this.loadUserInfo()
+		},
+		loadUserInfo() {
+			getUserProfile().then((result) => {
+				if (result.code === 200) {
+					const data = result.data as UTSJSONObject
+					if (data != null) {
+						const id = data.getNumber('id')
+						const avatar = data.getString('avatar')
+						const username = data.getString('username')
+						const email = data.getString('email')
+						const phone = data.getString('phone')
+						const nickname = data.getString('nickname')
+						
+						this.userInfo = {
+							id: id != null ? id.toInt() : '12345678',
+							avatar: avatar != null ? avatar : '',
+							username: username != null ? username : '',
+							email: email != null ? email : '',
+							phone: phone != null ? phone : '',
+							nickname: nickname != null ? nickname : ''
+						} as UserInfoType
+
+						// 合并保存，避免覆盖丢失 isSeller/shopName/roleCodes 等字段
+						const storedInfo = uni.getStorageSync('user_info')
+						let roleCodes : Any | null = null
+						let isSeller : boolean = false
+						let shopName : string = ''
+						if (storedInfo != null && storedInfo != '') {
+							try {
+								const oldInfo = JSON.parse(storedInfo as string) as UTSJSONObject
+								roleCodes = oldInfo.getAny('roleCodes')
+								isSeller = oldInfo.getBoolean('isSeller') == true
+								shopName = oldInfo.getString('shopName') ?? ''
+							} catch (e) {
+								console.error('解析旧用户信息失败:', e)
+							}
+						}
+
+						const mergedUserInfo = {
+							id: this.userInfo.id,
+							username: this.userInfo.username,
+							nickname: this.userInfo.nickname,
+							avatar: this.userInfo.avatar,
+							email: this.userInfo.email,
+							phone: this.userInfo.phone,
+							roleCodes: roleCodes,
+							isSeller: isSeller,
+							shopName: shopName
+						} as UTSJSONObject
+						uni.setStorageSync('user_info', JSON.stringify(mergedUserInfo))
+					}
+				}
+			}).catch((error) => {
+				console.error('获取用户信息失败:', error)
+				const errStr = error != null ? error.toString() : ''
+				const errMsg = errStr != '' ? errStr : ''
+				// 检查401状态码或特定的Token错误信息
+				if (errMsg != '' && (errMsg.includes('401') || errMsg.includes('Token') || errMsg.includes('过期') || errMsg.includes('无效'))) {
+					uni.removeStorageSync('auth_token')
+					uni.removeStorageSync('user_info')
+					uni.reLaunch({ url: '/pages/login/login' })
+				}
+			})
+			
+			// 加载订单统计数据
+			this.loadOrderStats()
+		},
+		loadOrderStats() {
+			getOrderCount().then((result) => {
+				if (result.code === 200) {
+					const data = result.data as UTSJSONObject
+					if (data != null) {
+						const unpaid = (data.getNumber('unpaid') ?? 0).toInt()
+						const unshipped = (data.getNumber('unshipped') ?? 0).toInt()
+						const shipped = (data.getNumber('shipped') ?? 0).toInt()
+						const completed = (data.getNumber('completed') ?? 0).toInt()
+						const total = (data.getNumber('total') ?? 0).toInt()
+						
+						this.stats = {
+							orders: total,           // 全部订单
+							pending: unpaid,         // 待付款
+							shipped: shipped,        // 待收货
+							favorites: this.stats.favorites  // 收藏夹（通过loadCollectionCount更新）
+						} as StatsType
+					}
+				}
+			}).catch((error) => {
+				console.error('获取订单统计失败:', error)
+				// 失败时保持默认值，不影响页面显示
+			})
+			
+			// 加载收藏总数
+			this.loadCollectionCount()
+		},
+		loadCollectionCount() {
+			getCollectionCount().then((result) => {
+				if (result.code === 200) {
+					const count = result.data as number
+					this.stats.favorites = count != null ? count : 0
+				}
+			}).catch((error) => {
+				console.error('获取收藏总数失败:', error)
+				// 失败时保持默认值，不影响页面显示
+			})
+		},
+		handleImageError() {
+			this.userInfo.avatar = this.defaultAvatar
+		},
+		handleUploadAvatar() {
+			uni.showActionSheet({
+				itemList: ['拍照', '从相册选择'],
+				success: (res) => {
+					const type = res.tapIndex === 0 ? 'camera' : 'album'
+					uni.chooseImage({
+						sourceType: [type],
+						count: 1,
+						success: (imgRes) => {
+							if (imgRes.tempFilePaths.length > 0) {
+								this.uploadAvatarFile(imgRes.tempFilePaths[0])
+							}
+						}
+					})
+				}
+			})
+		},
+		uploadAvatarFile(filePath : string) {
+			if (this.isLoading) return
+			this.isLoading = true
+			uni.showLoading({ title: '上传中...' })
+
+			uploadAvatar(filePath).then((result) => {
+				if (result != null) {
+					const code = (result.getNumber('code') ?? 0).toInt()
+					if (code === 200) {
+						const data = result.getString('data') ?? ''
+						this.userInfo.avatar = data
+						this.imageKey++
+
+						const storedInfo = uni.getStorageSync('user_info')
+						if (storedInfo != null && storedInfo != '') {
+							const infoStr = storedInfo as string
+							const info = JSON.parse(infoStr) as UTSJSONObject
+							const updatedInfo = {
+								id: info.getNumber('id') != null ? info.getNumber('id')!.toInt() : 0,
+								username: info.getString('username') ?? '',
+								nickname: info.getString('nickname') ?? '',
+								avatar: data,
+								email: info.getString('email') ?? '',
+								phone: info.getString('phone') ?? '',
+								roleCodes: info.getAny('roleCodes'),
+								isSeller: info.getBoolean('isSeller') == true,
+								shopName: info.getString('shopName') ?? ''
+							} as UTSJSONObject
+							uni.setStorageSync('user_info', JSON.stringify(updatedInfo))
+						}
+
+						uni.showToast({ title: '头像上传成功', icon: 'success' })
+					} else {
+						const msg = result.getString('message') ?? '上传失败'
+						uni.showToast({ title: msg, icon: 'error' })
+					}
+				} else {
+					uni.showToast({ title: '上传失败', icon: 'error' })
+				}
+				this.isLoading = false
+				uni.hideLoading()
+			}).catch((error) => {
+				uni.showToast({ title: '上传失败', icon: 'error' })
+				this.isLoading = false
+				uni.hideLoading()
+			})
+		},
+		handleSettings() {
+			uni.navigateTo({ url: '/pages/user/settings' })
+		},
+		handleNavigate(type : string) {
+			const routes = new Map<string, string>([
+				['products', '/pages/product/list'],
+				['orders', '/pages/order/list'],
+				['favorites', '/pages/product/favorites'],
+				['history', '/pages/product/history'],
+				['reviews', '/pages/user/reviews'],
+				['addresses', '/pages/user/address-list'],
+				['coupons', '/pages/user/coupons'],
+				['wallet', '/pages/user/wallet'],
+				['pending', '/pages/order/list?status=pending'],
+				['shipped', '/pages/order/list?status=shipped'],
+				['service', '/pages/service/chat']
+			])
+
+			const route = routes.get(type)
+			if (route != null && route != '') {
+				uni.navigateTo({ url: route as string })
+			} else {
+				uni.showToast({ title: '功能开发中', icon: 'none' })
+			}
+		},
+		handleEditProfile() {
+			uni.navigateTo({ url: '/pages/user/edit-profile' })
+		},
+		handleChangePassword() {
+			uni.navigateTo({ url: '/pages/user/change-password' })
+		},
+		handleLogout() {
+			uni.showModal({
+				title: '退出登录',
+				content: '确定要退出登录吗？',
+				confirmText: '退出',
+				confirmColor: '#FF4D4F',
+				success: (res) => {
+					if (res.confirm) {
+						logout().then(() => {}).catch(() => {})
+						uni.removeStorageSync('auth_token')
+						uni.removeStorageSync('user_info')
+						uni.reLaunch({ url: '/pages/login/login' })
+					}
+				}
+			})
+		}
+	}
+}
+</script>
+
+<style lang="scss" scoped>
+.profile-page {
+	display: flex;
+	flex-direction: column;
+	background-color: $uni-bg-color-grey;
+}
+
+.profile-container {
+	height: 100%;
+	background-color: $uni-bg-color-grey;
+	position: relative;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+.bg-shape {
+	position: absolute;
+	border-radius: 999px;
+	opacity: 0.1;
+	z-index: 0;
+}
+
+.bg-shape-1 {
+	width: 300px;
+	height: 300px;
+	background-color: $uni-color-primary;
+	top: -100px;
+	left: -50px;
+}
+
+.bg-shape-2 {
+	width: 200px;
+	height: 200px;
+	background-color: $uni-color-secondary;
+	top: 50px;
+	right: -50px;
+}
+
+.header {
+	height: 44px;
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: center;
+	padding: 0 $uni-spacing-lg;
+	margin-top: var(--status-bar-height);
+	position: relative;
+	z-index: 10;
+	flex-shrink: 0;
+}
+
+.header-spacer {
+	flex: 1;
+}
+
+.switch-role-btn {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	background-color: rgba(255, 255, 255, 0.9);
+	border-radius: 16px;
+	padding: 6px 12px;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.switch-icon {
+	font-size: 14px;
+	margin-right: 4px;
+}
+
+.switch-text {
+	font-size: 12px;
+	color: #0066CC;
+	font-weight: bold;
+}
+
+.settings-btn {
+	width: 40px;
+	height: 40px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: rgba(255, 255, 255, 0.8);
+	border-radius: 20px;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.settings-icon {
+	font-size: 20px;
+}
+
+.main-content {
+	flex: 1;
+	padding: $uni-spacing-base $uni-spacing-lg;
+	padding-bottom: 160rpx;
+	position: relative;
+	z-index: 1;
+}
+
+/* ==================== 身份状态提示条 ==================== */
+.role-status-bar {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	padding: 10px 16px;
+	border-radius: $uni-border-radius-base;
+	margin-bottom: $uni-spacing-base;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.buyer-mode {
+	background: linear-gradient(135deg, #E6F4FF 0%, #BAE0FF 100%);
+	border: 1px solid #91CAFF;
+}
+
+.seller-mode {
+	background: linear-gradient(135deg, #FFF7E6 0%, #FFE7BA 100%);
+	border: 1px solid #FFD591;
+}
+
+.role-icon {
+	font-size: 18px;
+	margin-right: 8px;
+}
+
+.role-text {
+	font-size: 15px;
+	font-weight: 700;
+	color: #0066CC;
+}
+
+.role-text-seller {
+	color: #FF8C00;
+}
+
+.profile-card {
+	background-color: #ffffff;
+	border-radius: 16px;
+	padding: $uni-spacing-lg;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+	margin-bottom: $uni-spacing-lg;
+}
+
+.profile-top {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	margin-bottom: $uni-spacing-lg;
+}
+
+.avatar-wrapper {
+	position: relative;
+	margin-right: $uni-spacing-base;
+}
+
+.avatar {
+	width: 72px;
+	height: 72px;
+	border-radius: 36px;
+	border: 3px solid #ffffff;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+	background-color: #f0f0f0;
+}
+
+.avatar-edit-badge {
+	position: absolute;
+	bottom: 0;
+	right: 0;
+	width: 24px;
+	height: 24px;
+	background-color: $uni-color-primary;
+	border-radius: 12px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: 2px solid #ffffff;
+}
+
+.edit-icon {
+	font-size: 12px;
+	color: #ffffff;
+}
+
+.profile-info {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+}
+
+.nickname {
+	font-size: 20px;
+	font-weight: 700;
+	color: $uni-text-color;
+	margin-bottom: 4px;
+}
+
+.username {
+	font-size: $uni-font-size-sm;
+	color: $uni-text-color-grey;
+	margin-bottom: 4px;
+}
+
+.user-id-tag {
+	background-color: $uni-bg-color-grey;
+	padding: 2px 8px;
+	border-radius: 10px;
+	align-self: flex-start;
+}
+
+.user-id {
+	font-size: 10px;
+	color: $uni-text-color-grey;
+}
+
+.stats-row {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	padding-top: $uni-spacing-base;
+	border-top: 1px solid $uni-border-color-light;
+}
+
+.stat-item {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	flex: 1;
+}
+
+.stat-num {
+	font-size: 20px;
+	font-weight: 700;
+	color: $uni-text-color;
+	margin-bottom: 6px;
+}
+
+.stat-name {
+	font-size: $uni-font-size-xs;
+	color: $uni-text-color-grey;
+}
+
+.section-title {
+	font-size: $uni-font-size-lg;
+	font-weight: 700;
+	color: $uni-text-color;
+	margin-bottom: $uni-spacing-base;
+	margin-left: $uni-spacing-xs;
+}
+
+.menu-grid {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	background-color: #ffffff;
+	border-radius: 16px;
+	padding: $uni-spacing-base;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+	margin-bottom: $uni-spacing-lg;
+}
+
+.menu-item {
+	width: 25%;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	margin-bottom: $uni-spacing-lg;
+}
+
+.menu-icon-box {
+	width: 44px;
+	height: 44px;
+	border-radius: 16px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-bottom: 8px;
+}
+
+.menu-icon-box-blue { background-color: rgba(0, 102, 204, 0.1); }
+.menu-icon-box-green { background-color: rgba(82, 196, 26, 0.1); }
+.menu-icon-box-orange { background-color: rgba(255, 122, 69, 0.1); }
+.menu-icon-box-purple { background-color: rgba(114, 46, 209, 0.1); }
+.menu-icon-box-red { background-color: rgba(255, 77, 79, 0.1); }
+.menu-icon-box-cyan { background-color: rgba(19, 194, 194, 0.1); }
+.menu-icon-box-teal { background-color: rgba(0, 150, 136, 0.1); }
+.menu-icon-box-indigo { background-color: rgba(63, 81, 181, 0.1); }
+
+.menu-icon {
+	font-size: 20px;
+}
+
+.menu-label {
+	font-size: $uni-font-size-sm;
+	color: $uni-text-color;
+}
+
+.promo-banner {
+	background: linear-gradient(135deg, $uni-color-primary 0%, #1890FF 100%);
+	border-radius: $uni-border-radius-lg;
+	padding: $uni-spacing-base $uni-spacing-lg;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	box-shadow: 0 4px 12px rgba(0, 102, 204, 0.2);
+	margin-bottom: $uni-spacing-base;
+}
+
+.promo-content {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+}
+
+.promo-title {
+	font-size: $uni-font-size-lg;
+	font-weight: 700;
+	color: #ffffff;
+	margin-bottom: 4px;
+}
+
+.promo-desc {
+	font-size: $uni-font-size-xs;
+	color: rgba(255, 255, 255, 0.8);
+}
+
+.promo-btn {
+	background-color: #ffffff;
+	color: $uni-color-primary;
+	font-size: $uni-font-size-xs;
+	font-weight: 700;
+	border-radius: 14px;
+	padding: 0 12px;
+	height: 28px;
+	line-height: 28px;
+	margin-left: $uni-spacing-base;
+}
+
+.buyer-tips {
+	background-color: #E6F7FF;
+	border-radius: $uni-border-radius-lg;
+	padding: $uni-spacing-base $uni-spacing-lg;
+	border: 1px solid #BAE7FF;
+	margin-top: $uni-spacing-base;
+	margin-bottom: $uni-spacing-base;
+}
+
+.logout-btn {
+	background-color: #ffffff;
+	color: #666666;
+	border: 1px solid #E5E5E5;
+	font-size: $uni-font-size-base;
+	font-weight: 400;
+	border-radius: $uni-border-radius-lg;
+	height: 48px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	box-shadow: $uni-shadow-sm;
+	margin-top: $uni-spacing-base;
+	margin-bottom: $uni-spacing-base;
+}
+
+.logout-icon {
+	font-size: 18px;
+	margin-right: 6px;
+}
+
+.logout-text {
+	font-size: $uni-font-size-base;
+	color: #666666;
+}
+
+/* ==================== 卖家视图样式 - 现代化设计 ==================== */
+.seller-profile-card {
+	background: #ffffff;
+	border-radius: 16px;
+	overflow: hidden;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+	margin-bottom: $uni-spacing-lg;
+	position: relative;
+}
+
+.seller-card-bg {
+	height: 80px;
+	background: linear-gradient(135deg, #0066CC 0%, #1890FF 100%);
+	position: relative;
+}
+
+.seller-main-content {
+	padding: 0 $uni-spacing-lg $uni-spacing-lg;
+	margin-top: -40px;
+	position: relative;
+	z-index: 2;
+}
+
+.seller-profile-header {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-start;
+	margin-bottom: $uni-spacing-base;
+}
+
+.seller-avatar-box {
+	position: relative;
+	margin-right: 12px;
+}
+
+.seller-avatar-img {
+	width: 88px;
+	height: 88px;
+	border-radius: 44px;
+	border: 4px solid #ffffff;
+	background-color: #f5f5f5;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.seller-verify-badge {
+	position: absolute;
+	bottom: 2px;
+	right: 2px;
+	width: 24px;
+	height: 24px;
+	background: linear-gradient(135deg, #52C41A 0%, #73D13D 100%);
+	border-radius: 12px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: 2px solid #ffffff;
+	box-shadow: 0 2px 4px rgba(82, 196, 26, 0.3);
+}
+
+.verify-icon {
+	font-size: 12px;
+	color: #ffffff;
+	font-weight: 700;
+}
+
+.seller-basic-info {
+	flex: 1;
+	padding-top: 48px;
+}
+
+.shop-name-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	margin-bottom: 4px;
+}
+
+.shop-name-text {
+	font-size: 20px;
+	font-weight: 700;
+	color: #333333;
+	margin-right: 8px;
+}
+
+.shop-level-tag {
+	background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+	padding: 2px 8px;
+	border-radius: 10px;
+}
+
+.level-text {
+	font-size: 10px;
+	color: #ffffff;
+	font-weight: 700;
+}
+
+.seller-id-text {
+	font-size: 12px;
+	color: #999999;
+	margin-bottom: 6px;
+}
+
+.seller-rating-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+}
+
+.rating-stars {
+	font-size: 11px;
+	margin-right: 4px;
+}
+
+.rating-score {
+	font-size: 14px;
+	font-weight: 700;
+	color: #FF8C00;
+	margin-right: 4px;
+}
+
+.rating-count {
+	font-size: 11px;
+	color: #999999;
+}
+
+.seller-stats-grid {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	margin-top: $uni-spacing-base;
+}
+
+.stat-card {
+	flex: 1;
+	background: #F8F9FA;
+	border-radius: 12px;
+	padding: 12px 8px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	position: relative;
+	overflow: hidden;
+	margin: 0 5px;
+}
+
+.stat-card-1 {
+	background: linear-gradient(135deg, #E6F7FF 0%, #BAE7FF 100%);
+}
+
+.stat-card-2 {
+	background: linear-gradient(135deg, #FFF7E6 0%, #FFE7BA 100%);
+}
+
+.stat-card-3 {
+	background: linear-gradient(135deg, #F6FFED 0%, #D9F7BE 100%);
+}
+
+.stat-icon {
+	font-size: 24px;
+	margin-bottom: 4px;
+}
+
+.stat-number {
+	font-size: 18px;
+	font-weight: 700;
+	color: #333333;
+	margin-bottom: 2px;
+}
+
+.stat-label {
+	font-size: 11px;
+	color: #666666;
+}
+
+.seller-tips {
+	background-color: #FFF7E6;
+	border-radius: $uni-border-radius-lg;
+	padding: $uni-spacing-base $uni-spacing-lg;
+	border: 1px solid #FFE4B5;
+	margin-top: $uni-spacing-base;
+	margin-bottom: $uni-spacing-base;
+}
+
+.tips-content {
+	display: flex;
+	flex-direction: column;
+}
+
+.tips-title {
+	font-size: $uni-font-size-base;
+	font-weight: bold;
+	color: #FF8C00;
+	margin-bottom: 4px;
+}
+
+.tips-desc {
+	font-size: $uni-font-size-sm;
+	color: #996600;
+	line-height: 1.5;
+}
+
+/* ==================== 管理员入口样式 ==================== */
+.admin-entry-section {
+	margin-bottom: $uni-spacing-lg;
+}
+
+.admin-entry-card {
+	background: linear-gradient(135deg, #722ED1 0%, #9254DE 100%);
+	border-radius: 12px;
+	padding: 16px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	box-shadow: 0 4px 12px rgba(114, 46, 209, 0.3);
+	position: relative;
+	overflow: hidden;
+}
+
+.admin-entry-left {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	flex: 1;
+	z-index: 1;
+}
+
+.admin-entry-icon {
+	font-size: 36px;
+	margin-right: 12px;
+}
+
+.admin-entry-info {
+	display: flex;
+	flex-direction: column;
+}
+
+.admin-entry-title {
+	font-size: 17px;
+	font-weight: 700;
+	color: #FFFFFF;
+	margin-bottom: 4px;
+}
+
+.admin-entry-desc {
+	font-size: 12px;
+	color: rgba(255, 255, 255, 0.8);
+}
+
+.admin-entry-arrow {
+	font-size: 24px;
+	color: #FFFFFF;
+	z-index: 1;
+}
+</style>

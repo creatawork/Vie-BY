@@ -1,0 +1,775 @@
+<template>
+  <view class="cart-page">
+    <!-- 头部 -->
+    <view class="header">
+      <view class="header-left">
+        <text class="page-title">购物车</text>
+        <text class="cart-count">({{ cartData.totalQuantity }})</text>
+      </view>
+      <text class="edit-btn" @click="toggleEditMode">{{ isEditing ? '完成' : '编辑' }}</text>
+    </view>
+
+    <!-- 加载中 -->
+    <view v-if="isLoading" class="loading-state">
+      <text class="loading-text">加载中...</text>
+    </view>
+
+    <!-- 购物车为空时的提示 -->
+    <view v-else-if="cartData.items.length === 0" class="empty-cart">
+      <text class="empty-icon">🛒</text>
+      <text class="empty-title">购物车空空如也</text>
+      <text class="empty-desc">赶紧去挑选心仪的商品吧</text>
+      <button class="go-shopping-btn" @click="goShopping">去逛逛</button>
+    </view>
+
+    <!-- 购物车商品列表 -->
+    <scroll-view v-else class="cart-scroll" scroll-y="true" @refresherrefresh="onRefresh" :refresher-enabled="true" :refresher-triggered="isRefreshing">
+      <view class="cart-list">
+        <view class="shop-group">
+          <view class="shop-header">
+            <checkbox class="shop-checkbox" :checked="cartData.allSelected" @click="toggleSelectAll" color="#0066CC"  />
+            <text class="shop-icon">🏪</text>
+            <text class="shop-name">鲜农优选直营店</text>
+          </view>
+          
+          <view class="cart-item" v-for="(item, index) in cartData.items" :key="item.cartId">
+            <view class="item-checkbox-wrapper" @click="toggleSelect(item)">
+              <checkbox :checked="item.selected" color="#0066CC"  @click.stop="toggleSelect(item)" />
+            </view>
+            
+            <view class="item-content" @click="goToDetail(item.productId)">
+              <image class="item-image" :src="item.productImage" mode="aspectFill"></image>
+              
+              <view class="item-info">
+                <view class="info-top">
+                  <text class="item-name">{{ item.productName }}</text>
+                  <view class="item-spec-box" v-if="item.skuName">
+                    <text class="item-spec">{{ item.skuName }}</text>
+                  </view>
+                  <!-- 无效商品标记 -->
+                  <view v-if="!item.valid" class="invalid-tag">
+                    <text class="invalid-text">{{ item.productStatus !== 1 ? '已下架' : '库存不足' }}</text>
+                  </view>
+                </view>
+                
+                <view class="info-bottom">
+                  <view class="price-box">
+                    <text class="currency">¥</text>
+                    <text class="price">{{ item.price.toFixed(2) }}</text>
+                  </view>
+                  
+                  <view class="quantity-control">
+                    <view class="qty-btn qty-btn-minus" :class="{ 'qty-btn-disabled': item.quantity <= 1 }" @click.stop="decreaseQuantity(item)">
+                      <text class="qty-btn-text">-</text>
+                    </view>
+                    <view class="qty-input">
+                      <text class="qty-text">{{ item.quantity }}</text>
+                    </view>
+                    <view class="qty-btn qty-btn-plus" :class="{ 'qty-btn-disabled': item.quantity >= item.stock }" @click.stop="increaseQuantity(item)">
+                      <text class="qty-btn-text">+</text>
+                    </view>
+                  </view>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+      
+      <!-- 底部安全高度 -->
+      <view style="height: 140rpx;"></view>
+    </scroll-view>
+
+    <!-- 底部结算栏 -->
+    <view v-if="cartData.items.length > 0" class="bottom-bar">
+      <view class="select-all" @click="toggleSelectAll">
+        <checkbox :checked="cartData.allSelected" color="#0066CC"  @click.stop="toggleSelectAll" />
+        <text class="select-all-text">全选</text>
+      </view>
+      
+      <view class="action-area">
+        <template v-if="!isEditing">
+          <view class="price-info">
+            <view class="total-row">
+              <text class="total-label">合计:</text>
+              <text class="total-price">¥{{ cartData.selectedAmount.toFixed(2) }}</text>
+            </view>
+          </view>
+          <button class="submit-btn submit-btn-checkout" :disabled="cartData.selectedQuantity === 0" @click="goCheckout">
+            结算({{ cartData.selectedQuantity }})
+          </button>
+        </template>
+        
+        <template v-else>
+          <button class="submit-btn submit-btn-delete" :disabled="cartData.selectedQuantity === 0" @click="removeSelectedItems">
+            删除({{ cartData.selectedQuantity }})
+          </button>
+        </template>
+      </view>
+    </view>
+    
+    <!-- 底部导航栏 -->
+    <BottomNav />
+  </view>
+</template>
+
+<script lang="uts">
+import BottomNav from '@/components/BottomNav.uvue'
+import { getCart, updateCartQuantity, deleteCartItem, updateCartSelected, selectAllCart, type CartItemVO, type CartVO } from '@/api/cart'
+
+export default {
+  components: {
+    BottomNav
+  },
+  data() {
+    return {
+      isEditing: false,
+      isLoading: true,
+      isRefreshing: false,
+      cartData: {
+        items: [] as CartItemVO[],
+        totalQuantity: 0,
+        selectedQuantity: 0,
+        selectedAmount: 0,
+        allSelected: false,
+        validCount: 0,
+        invalidCount: 0
+      } as CartVO
+    }
+  },
+  onLoad() {
+    this.loadCart()
+  },
+  onShow() {
+    uni.$emit('bottomNavRefresh')
+    // 每次显示页面时刷新购物车
+    this.loadCart()
+  },
+  methods: {
+    /**
+     * 加载购物车数据
+     */
+    loadCart() {
+      this.isLoading = true
+      getCart().then((res) => {
+        console.log('=== 购物车响应 ===')
+        console.log('响应code:', res.code)
+        console.log('响应message:', res.message)
+        console.log('响应data类型:', typeof res.data)
+        console.log('购物车原始数据:', JSON.stringify(res.data))
+        const data = res.data as UTSJSONObject
+        this.parseCartData(data)
+        console.log('解析后购物车数据:', this.cartData.items.length, '件商品')
+        console.log('=================')
+        this.isLoading = false
+        this.isRefreshing = false
+      }).catch((err) => {
+        console.error('获取购物车失败:', err)
+        this.isLoading = false
+        this.isRefreshing = false
+        uni.showToast({ title: '获取购物车失败', icon: 'none' })
+      })
+    },
+    
+    /**
+     * 解析购物车数据
+     */
+    parseCartData(data : UTSJSONObject) {
+      const itemsArr = data.getArray('items')
+      const items : CartItemVO[] = []
+      
+      console.log('购物车items数组:', itemsArr != null ? itemsArr.length : 'null')
+      
+      if (itemsArr != null) {
+        for (let i = 0; i < itemsArr.length; i++) {
+          const item = itemsArr[i] as UTSJSONObject
+          // 兼容 cartId 和 id 两种字段名
+          const cartId = (item.getNumber('cartId') ?? item.getNumber('id') ?? 0).toInt()
+          console.log('解析商品:', item.getString('productName'), 'cartId:', cartId)
+          items.push({
+          cartId: cartId,
+          productId: (item.getNumber('productId') ?? 0).toInt(),
+          skuId: (item.getNumber('skuId') ?? 0).toInt(),
+          productName: item.getString('productName') ?? '',
+          productImage: item.getString('productImage') ?? '',
+          skuName: item.getString('skuName') ?? '',
+          skuImage: item.getString('skuImage'),
+          price: item.getNumber('price') ?? 0,
+          quantity: (item.getNumber('quantity') ?? 0).toInt(),
+          totalPrice: item.getNumber('totalPrice') ?? 0,
+          stock: (item.getNumber('stock') ?? 0).toInt(),
+          selected: item.getBoolean('selected') ?? false,
+          productStatus: (item.getNumber('productStatus') ?? 0).toInt(),
+          skuStatus: (item.getNumber('skuStatus') ?? 0).toInt(),
+          valid: item.getBoolean('valid') ?? true
+        } as CartItemVO)
+        }
+      }
+      
+      this.cartData = {
+        items: items,
+        totalQuantity: (data.getNumber('totalQuantity') ?? 0).toInt(),
+        selectedQuantity: (data.getNumber('selectedQuantity') ?? 0).toInt(),
+        selectedAmount: data.getNumber('selectedAmount') ?? 0,
+        allSelected: data.getBoolean('allSelected') ?? false,
+        validCount: (data.getNumber('validCount') ?? 0).toInt(),
+        invalidCount: (data.getNumber('invalidCount') ?? 0).toInt()
+      } as CartVO
+    },
+    
+    /**
+     * 下拉刷新
+     */
+    onRefresh() {
+      this.isRefreshing = true
+      this.loadCart()
+    },
+    
+    toggleEditMode() {
+      this.isEditing = !this.isEditing
+    },
+    
+    /**
+     * 切换单个商品选中状态
+     */
+    toggleSelect(item : CartItemVO) {
+      const newSelected = !item.selected
+      updateCartSelected(item.cartId, newSelected).then(() => {
+        item.selected = newSelected
+        this.recalculateCart()
+      }).catch((err) => {
+        console.error('更新选中状态失败:', err)
+        uni.showToast({ title: '操作失败', icon: 'none' })
+      })
+    },
+    
+    /**
+     * 全选/取消全选
+     */
+    toggleSelectAll() {
+      const newSelected = !this.cartData.allSelected
+      selectAllCart(newSelected).then(() => {
+        this.cartData.items.forEach((item : CartItemVO) => {
+          if (item.valid) {
+            item.selected = newSelected
+          }
+        })
+        this.recalculateCart()
+      }).catch((err) => {
+        console.error('全选操作失败:', err)
+        uni.showToast({ title: '操作失败', icon: 'none' })
+      })
+    },
+    
+    /**
+     * 重新计算购物车统计数据
+     */
+    recalculateCart() {
+      let selectedQuantity = 0
+      let selectedAmount = 0
+      let allSelected = true
+      let validCount = 0
+      
+      this.cartData.items.forEach((item : CartItemVO) => {
+        if (item.valid) {
+          validCount++
+          if (item.selected) {
+            selectedQuantity += item.quantity
+            selectedAmount += item.totalPrice
+          } else {
+            allSelected = false
+          }
+        }
+      })
+      
+      if (validCount === 0) {
+        allSelected = false
+      }
+      
+      this.cartData.selectedQuantity = selectedQuantity
+      this.cartData.selectedAmount = selectedAmount
+      this.cartData.allSelected = allSelected
+      this.cartData.validCount = validCount
+    },
+    
+    /**
+     * 增加数量
+     */
+    increaseQuantity(item : CartItemVO) {
+      if (item.quantity >= item.stock) {
+        uni.showToast({ title: '库存不足', icon: 'none' })
+        return
+      }
+      
+      const newQuantity = item.quantity + 1
+      updateCartQuantity(item.cartId, newQuantity).then(() => {
+        item.quantity = newQuantity
+        item.totalPrice = item.price * newQuantity
+        this.recalculateCart()
+      }).catch((err) => {
+        console.error('更新数量失败:', err)
+        uni.showToast({ title: '操作失败', icon: 'none' })
+      })
+    },
+    
+    /**
+     * 减少数量
+     */
+    decreaseQuantity(item : CartItemVO) {
+      if (item.quantity <= 1) {
+        // 数量为1时，询问是否删除
+        uni.showModal({
+          title: '提示',
+          content: '确认删除该商品吗？',
+          success: (res) => {
+            if (res.confirm) {
+              this.deleteItem(item)
+            }
+          }
+        })
+        return
+      }
+      
+      const newQuantity = item.quantity - 1
+      updateCartQuantity(item.cartId, newQuantity).then(() => {
+        item.quantity = newQuantity
+        item.totalPrice = item.price * newQuantity
+        this.recalculateCart()
+      }).catch((err) => {
+        console.error('更新数量失败:', err)
+        uni.showToast({ title: '操作失败', icon: 'none' })
+      })
+    },
+    
+    /**
+     * 删除单个商品
+     */
+    deleteItem(item : CartItemVO) {
+      deleteCartItem(item.cartId).then(() => {
+        const index = this.cartData.items.findIndex((i : CartItemVO) : boolean => i.cartId === item.cartId)
+        if (index !== -1) {
+          this.cartData.items.splice(index, 1)
+          this.cartData.totalQuantity -= item.quantity
+          this.recalculateCart()
+        }
+        uni.showToast({ title: '删除成功', icon: 'success' })
+      }).catch((err) => {
+        console.error('删除失败:', err)
+        uni.showToast({ title: '删除失败', icon: 'none' })
+      })
+    },
+    
+    /**
+     * 删除选中的商品
+     */
+    removeSelectedItems() {
+      const selectedItems = this.cartData.items.filter((item : CartItemVO) : boolean => item.selected)
+      if (selectedItems.length === 0) {
+        return
+      }
+      
+      uni.showModal({
+        title: '提示',
+        content: `确定删除选中的 ${selectedItems.length} 件商品吗？`,
+        success: (res) => {
+          if (res.confirm) {
+            // 依次删除选中的商品
+            let deleteCount = 0
+            selectedItems.forEach((item : CartItemVO) => {
+              deleteCartItem(item.cartId).then(() => {
+                deleteCount++
+                if (deleteCount === selectedItems.length) {
+                  // 全部删除完成后刷新购物车
+                  this.loadCart()
+                  this.isEditing = false
+                  uni.showToast({ title: '删除成功', icon: 'success' })
+                }
+              }).catch((err) => {
+                console.error('删除失败:', err)
+              })
+            })
+          }
+        }
+      })
+    },
+    
+    goShopping() {
+      uni.navigateBack({ delta: 99 })
+    },
+    
+    goToDetail(productId : number) {
+      uni.navigateTo({ url: `/pages/product/detail?id=${productId}` })
+    },
+    
+    goCheckout() {
+      // 获取选中的购物车ID
+      const selectedCartIds = this.cartData.items
+        .filter((item : CartItemVO) : boolean => item.selected && item.valid)
+        .map((item : CartItemVO) : number => item.cartId)
+      
+      if (selectedCartIds.length === 0) {
+        uni.showToast({ title: '请选择商品', icon: 'none' })
+        return
+      }
+      
+      // 跳转到结算页面
+      uni.navigateTo({ url: `/pages/order/checkout?type=cart&cartIds=${selectedCartIds.join(',')}` })
+    }
+  }
+}
+</script>
+
+<style lang="scss" scoped>
+.cart-page {
+  background-color: #f7f8fa;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  background-color: #fff;
+  padding: 12px 16px;
+  padding-top: var(--status-bar-height);
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 100;
+  
+  .header-left {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    
+    .page-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #333;
+    }
+    
+    .cart-count {
+      font-size: 14px;
+      color: #999;
+      margin-left: 4px;
+    }
+  }
+  
+  .edit-btn {
+    font-size: 14px;
+    color: #0066CC;
+  }
+}
+
+.loading-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-text {
+  font-size: 14px;
+  color: #999;
+}
+
+.empty-cart {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 100px;
+}
+
+.empty-icon {
+  font-size: 60px;
+  margin-bottom: 20px;
+}
+
+.empty-title {
+  font-size: 16px;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.empty-desc {
+  font-size: 13px;
+  color: #999;
+  margin-bottom: 24px;
+}
+
+.go-shopping-btn {
+  border: 1px solid #0066CC;
+  color: #0066CC;
+  background-color: transparent;
+  border-radius: 20px;
+  padding: 0 30px;
+  font-size: 14px;
+  height: 36px;
+  line-height: 36px;
+}
+
+.cart-scroll {
+  flex: 1;
+}
+
+.cart-list {
+  padding: 12px 16px;
+}
+
+.shop-group {
+  background-color: #fff;
+  border-radius: 16px;
+  padding: 0 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+}
+
+.shop-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.shop-checkbox {
+  margin-right: 8px;
+}
+
+.shop-icon {
+  font-size: 16px;
+  margin-right: 6px;
+}
+
+.shop-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #333;
+}
+
+.cart-item {
+  display: flex;
+  flex-direction: row;
+  padding: 16px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.item-checkbox-wrapper {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-right: 8px;
+}
+
+.item-content {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+}
+
+.item-image {
+  width: 90px;
+  height: 90px;
+  border-radius: 8px;
+  background-color: #f5f5f5;
+  margin-right: 12px;
+}
+
+.item-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.info-top {
+  display: flex;
+  flex-direction: column;
+}
+
+.item-name {
+  font-size: 14px;
+  color: #333;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+
+.item-spec-box {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  background-color: #f5f5f5;
+  padding: 2px 6px;
+  border-radius: 4px;
+  align-self: flex-start;
+  margin-bottom: 6px;
+}
+
+.item-spec {
+  font-size: 11px;
+  color: #666;
+}
+
+.invalid-tag {
+  background-color: #ffebee;
+  padding: 2px 6px;
+  border-radius: 4px;
+  align-self: flex-start;
+}
+
+.invalid-text {
+  font-size: 11px;
+  color: #ff4d4f;
+}
+
+.info-bottom {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.price-box {
+  color: #ff4d4f;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.currency {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.price {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.quantity-control {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  border: 1px solid #eee;
+  border-radius: 4px;
+}
+
+.qty-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #fff;
+}
+
+.qty-btn-minus {
+  border-right: 1px solid #eee;
+}
+
+.qty-btn-plus {
+  border-left: 1px solid #eee;
+}
+
+.qty-btn-disabled {
+  background-color: #f5f5f5;
+}
+
+.qty-btn-text {
+  font-size: 16px;
+  color: #333;
+}
+
+.qty-input {
+  width: 36px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qty-text {
+  font-size: 14px;
+  color: #333;
+}
+
+.bottom-bar {
+  position: fixed;
+  bottom: 120rpx;
+  left: 0;
+  right: 0;
+  background-color: #fff;
+  height: 50px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  box-shadow: 0 -1px 8px rgba(0,0,0,0.05);
+  z-index: 99;
+}
+
+.select-all {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.select-all-text {
+  font-size: 14px;
+  color: #666;
+  margin-left: 8px;
+}
+
+.action-area {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.price-info {
+  text-align: right;
+  margin-right: 12px;
+}
+
+.total-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.total-label {
+  font-size: 14px;
+  color: #333;
+}
+
+.total-price {
+  font-size: 18px;
+  font-weight: 700;
+  color: #ff4d4f;
+  margin-left: 4px;
+}
+
+.submit-btn {
+  border-radius: 20px;
+  font-size: 14px;
+  color: #fff;
+  padding: 0 24px;
+  height: 36px;
+  line-height: 36px;
+  border: none;
+}
+
+.submit-btn-checkout {
+  background-color: #0066CC;
+}
+
+.submit-btn-delete {
+  background-color: #fff;
+  color: #ff4d4f;
+  border: 1px solid #ff4d4f;
+}
+</style>

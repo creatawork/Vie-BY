@@ -1,0 +1,937 @@
+import { getUserProfile, logout, uploadAvatar } from '@/api/user';
+import { getSellerStatus, becomeSeller, getRevenueStatistics, getOrderOverview } from '@/api/seller';
+import type { ResponseDataType } from '@/utils/request';
+import { getOrderCount } from '@/api/order';
+import { getCollectionCount } from '@/api/product';
+import { getSellerOrderCount } from '@/api/sellerOrder';
+import BottomNav from '@/components/BottomNav.uvue';
+type UserInfoType = {
+    __$originalPosition?: UTSSourceMapPosition<"UserInfoType", "pages/user/profile.uvue", 302, 6>;
+    id: string | number;
+    avatar: string;
+    username: string;
+    email: string;
+    phone: string;
+    nickname: string;
+};
+type StatsType = {
+    __$originalPosition?: UTSSourceMapPosition<"StatsType", "pages/user/profile.uvue", 311, 6>;
+    orders: number;
+    pending: number;
+    shipped: number;
+    favorites: number;
+};
+// 卖家经营数据类型（保留用于其他统计）
+type SellerStatsType = {
+    __$originalPosition?: UTSSourceMapPosition<"SellerStatsType", "pages/user/profile.uvue", 319, 6>;
+    todaySales: number; // 今日销售额
+    pendingShip: number; // 待发货订单数
+    pendingSettle: number; // 待结算金额
+    productCount: number; // 在售商品数量
+};
+// 商家订单统计类型
+type SellerOrderStatsType = {
+    __$originalPosition?: UTSSourceMapPosition<"SellerOrderStatsType", "pages/user/profile.uvue", 327, 6>;
+    unpaid: number; // 待支付订单数
+    unshipped: number; // 待发货订单数
+    shipped: number; // 待收货订单数（已发货）
+    completed: number; // 已完成订单数
+    cancelled: number; // 已取消订单数
+    total: number; // 订单总数
+};
+const __sfc__ = defineComponent({
+    components: {
+        BottomNav
+    },
+    data() {
+        return {
+            userInfo: {
+                id: '12345678',
+                avatar: '',
+                username: 'testuser',
+                email: 'user@example.com',
+                phone: '13800138000',
+                nickname: '测试用户'
+            } as UserInfoType,
+            stats: {
+                orders: 5,
+                pending: 1,
+                shipped: 2,
+                favorites: 12
+            } as StatsType,
+            defaultAvatar: '/static/logo.png',
+            isLoading: false,
+            imageKey: 0,
+            // 卖家相关数据属性
+            isSeller: false,
+            isAdmin: false,
+            currentRole: 'buyer' as string,
+            shopName: '' as string,
+            sellerStats: {
+                todaySales: 0,
+                pendingShip: 0,
+                pendingSettle: 0,
+                productCount: 0
+            } as SellerStatsType,
+            sellerOrderStats: {
+                waitShipCount: 0,
+                finishedCount: 0,
+                totalCount: 0
+            } as UTSJSONObject
+        };
+    },
+    onLoad() {
+        this.checkLoginStatus();
+        // 监听收藏刷新事件
+        uni.$on('refreshFavorites', this.loadCollectionCount);
+    },
+    onUnload() {
+        // 移除事件监听
+        uni.$off('refreshFavorites', this.loadCollectionCount);
+    },
+    onShow() {
+        // 刷新底部导航栏
+        uni.$emit('bottomNavRefresh');
+        const userInfo = uni.getStorageSync('user_info');
+        if (userInfo != null && userInfo != '') {
+            try {
+                const infoStr = userInfo as string;
+                const parsed = UTSAndroid.consoleDebugError(JSON.parse(infoStr), " at pages/user/profile.uvue:395") as UTSJSONObject;
+                // 更新用户信息
+                const id = parsed.getNumber('id');
+                const avatar = parsed.getString('avatar');
+                const username = parsed.getString('username');
+                const email = parsed.getString('email');
+                const phone = parsed.getString('phone');
+                const nickname = parsed.getString('nickname');
+                this.userInfo = {
+                    id: id != null ? id.toInt() : this.userInfo.id,
+                    avatar: avatar != null ? avatar : this.userInfo.avatar,
+                    username: username != null ? username : this.userInfo.username,
+                    email: email != null ? email : this.userInfo.email,
+                    phone: phone != null ? phone : this.userInfo.phone,
+                    nickname: nickname != null ? nickname : this.userInfo.nickname
+                } as UserInfoType;
+                // 检查卖家身份状态
+                this.checkSellerStatus();
+                // 刷新订单统计数据
+                this.loadOrderStats();
+            }
+            catch (e: any) {
+                console.error(e, " at pages/user/profile.uvue:419");
+            }
+        }
+        else {
+            this.checkLoginStatus();
+        }
+    },
+    methods: {
+        getAvatarUrl(): string {
+            return this.userInfo.avatar != '' ? this.userInfo.avatar : this.defaultAvatar;
+        },
+        getNickname(): string {
+            return this.userInfo.nickname != '' ? this.userInfo.nickname : '未设置昵称';
+        },
+        getUserId(): string {
+            const id = this.userInfo.id;
+            return id != null && id != '' ? id.toString() : '12345678';
+        },
+        // 检查卖家身份状态
+        checkSellerStatus() {
+            // 从本地存储读取卖家状态和管理员状态
+            const userInfoStr = uni.getStorageSync('user_info');
+            if (userInfoStr != null && userInfoStr != '') {
+                try {
+                    const parsed = UTSAndroid.consoleDebugError(JSON.parse(userInfoStr as string), " at pages/user/profile.uvue:442") as UTSJSONObject;
+                    const sellerStatus = parsed.getBoolean('isSeller');
+                    const storedShopName = parsed.getString('shopName');
+                    const roleCodes = parsed.getArray('roleCodes');
+                    this.isSeller = sellerStatus == true;
+                    this.shopName = storedShopName != null ? storedShopName : '';
+                    // 检查是否是管理员（username为admin或角色包含ADMIN）
+                    const username = parsed.getString('username');
+                    if (username == 'admin') {
+                        this.isAdmin = true;
+                    }
+                    else if (roleCodes != null) {
+                        // 检查角色数组中是否包含管理员角色
+                        for (let i = 0; i < roleCodes.length; i++) {
+                            const role = roleCodes[i] as string;
+                            if (role == 'ADMIN' || role == 'admin') {
+                                this.isAdmin = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                catch (e: any) {
+                    console.error('解析卖家状态失败:', e, " at pages/user/profile.uvue:465");
+                }
+            }
+            // 从本地存储读取当前身份视图
+            const storedRole = uni.getStorageSync('current_role');
+            if (storedRole != null && storedRole != '') {
+                const roleStr = storedRole as string;
+                // 如果是卖家且上次为卖家视图，自动切换到卖家视图
+                if (this.isSeller && roleStr == 'seller') {
+                    this.currentRole = 'seller';
+                    // 加载卖家经营数据
+                    this.loadSellerStats();
+                }
+                else {
+                    this.currentRole = 'buyer';
+                }
+            }
+            else {
+                this.currentRole = 'buyer';
+            }
+            // 从服务器获取最新的卖家状态
+            getSellerStatus().then((result: ResponseDataType) => {
+                if (result.code === 200) {
+                    const data = result.data as UTSJSONObject;
+                    if (data != null) {
+                        const serverIsSeller = data.getBoolean('isSeller');
+                        const serverShopName = data.getString('shopName');
+                        this.isSeller = serverIsSeller == true;
+                        this.shopName = serverShopName != null ? serverShopName : '';
+                        // 更新本地存储
+                        const userInfoStr2 = uni.getStorageSync('user_info');
+                        if (userInfoStr2 != null && userInfoStr2 != '') {
+                            try {
+                                const info = UTSAndroid.consoleDebugError(JSON.parse(userInfoStr2 as string), " at pages/user/profile.uvue:500") as UTSJSONObject;
+                                const updatedInfo = { __$originalPosition: new UTSSourceMapPosition("updatedInfo", "pages/user/profile.uvue", 501, 15),
+                                    id: info.getNumber('id'),
+                                    username: info.getString('username'),
+                                    nickname: info.getString('nickname'),
+                                    avatar: info.getString('avatar'),
+                                    email: info.getString('email'),
+                                    phone: info.getString('phone'),
+                                    roleCodes: info.getAny('roleCodes'),
+                                    isSeller: this.isSeller,
+                                    shopName: this.shopName
+                                } as UTSJSONObject;
+                                uni.setStorageSync('user_info', JSON.stringify(updatedInfo));
+                            }
+                            catch (e: any) {
+                                console.error('更新本地卖家状态失败:', e, " at pages/user/profile.uvue:514");
+                            }
+                        }
+                        // 如果是卖家且当前为卖家视图，加载经营数据
+                        if (this.isSeller && this.currentRole == 'seller') {
+                            this.loadSellerStats();
+                        }
+                    }
+                }
+            }).catch((error: Any | null) => {
+                console.error('获取卖家状态失败:', error, " at pages/user/profile.uvue:525");
+            });
+        },
+        // 切换买家/卖家视图
+        handleSwitchRole() {
+            if (!this.isSeller) {
+                uni.showToast({ title: '请先开通卖家功能', icon: 'none' });
+                return;
+            }
+            // 切换身份
+            if (this.currentRole == 'buyer') {
+                this.currentRole = 'seller';
+                // 加载卖家经营数据
+                this.loadSellerStats();
+            }
+            else {
+                this.currentRole = 'buyer';
+            }
+            // 保存当前身份到本地存储
+            uni.setStorageSync('current_role', this.currentRole);
+            // 刷新底部导航栏
+            uni.$emit('bottomNavRefresh');
+        },
+        // 加载卖家经营数据
+        loadSellerStats() {
+            // 加载收入统计数据
+            getRevenueStatistics().then((result) => {
+                if (result.code === 200) {
+                    const data = result.data as UTSJSONObject;
+                    if (data != null) {
+                        const todaySales = data.getNumber('todaySales');
+                        const pendingShip = data.getNumber('pendingShipCount');
+                        const pendingSettle = data.getNumber('pendingSettleAmount');
+                        const productCount = data.getNumber('productCount');
+                        this.sellerStats = {
+                            todaySales: todaySales != null ? todaySales : 0,
+                            pendingShip: pendingShip != null ? pendingShip.toInt() : 0,
+                            pendingSettle: pendingSettle != null ? pendingSettle : 0,
+                            productCount: productCount != null ? productCount.toInt() : 0
+                        } as SellerStatsType;
+                    }
+                }
+            }).catch((error) => {
+                console.error('获取卖家经营数据失败:', error, " at pages/user/profile.uvue:571");
+            });
+            // 加载订单统计数据
+            this.loadSellerOrderStats();
+        },
+        // 加载商家订单统计
+        loadSellerOrderStats() {
+            getOrderOverview().then((result) => {
+                if (result.code === 200) {
+                    const data = result.data as UTSJSONObject;
+                    if (data != null) {
+                        this.sellerOrderStats = data;
+                    }
+                }
+            }).catch((error) => {
+                console.error('获取商家订单统计失败:', error, " at pages/user/profile.uvue:587");
+            });
+        },
+        // 卖家菜单导航
+        handleSellerNavigate(type: string) {
+            const routes = new Map<string, string>([
+                ['products', '/pages/seller/products'],
+                ['inventory', '/pages/seller/inventory'],
+                ['statistics', '/pages/seller/statistics'],
+                ['account', '/pages/seller/account'],
+                ['reviews', '/pages/seller/reviews']
+            ]);
+            const route = routes.get(type);
+            if (route != null && route != '') {
+                uni.navigateTo({ url: route as string });
+            }
+            else {
+                uni.showToast({ title: '功能开发中', icon: 'none' });
+            }
+        },
+        // 管理员后台导航
+        handleAdminNavigate() {
+            uni.navigateTo({ url: '/pages/admin/index' });
+        },
+        // 处理开通卖家功能
+        handleBecomeSeller() {
+            uni.showModal({
+                title: '开通卖家功能',
+                content: '确定要开通卖家功能吗？开通后您可以在平台上销售商品。',
+                editable: true,
+                placeholderText: '请输入店铺名称（可选）',
+                confirmText: '确认开通',
+                cancelText: '取消',
+                success: (res) => {
+                    if (res.confirm) {
+                        const inputShopName = res.content != null && res.content != '' ? res.content : null;
+                        uni.showLoading({ title: '开通中...' });
+                        becomeSeller(inputShopName).then((result: ResponseDataType) => {
+                            uni.hideLoading();
+                            if (result.code === 200) {
+                                // 更新本地状态
+                                this.isSeller = true;
+                                if (inputShopName != null && inputShopName != '') {
+                                    this.shopName = inputShopName!;
+                                }
+                                // 更新本地存储
+                                const userInfoStr = uni.getStorageSync('user_info');
+                                if (userInfoStr != null && userInfoStr != '') {
+                                    try {
+                                        const info = UTSAndroid.consoleDebugError(JSON.parse(userInfoStr as string), " at pages/user/profile.uvue:640") as UTSJSONObject;
+                                        const updatedInfo = { __$originalPosition: new UTSSourceMapPosition("updatedInfo", "pages/user/profile.uvue", 641, 17),
+                                            id: info.getNumber('id'),
+                                            username: info.getString('username'),
+                                            nickname: info.getString('nickname'),
+                                            avatar: info.getString('avatar'),
+                                            email: info.getString('email'),
+                                            phone: info.getString('phone'),
+                                            roleCodes: info.getAny('roleCodes'),
+                                            isSeller: true,
+                                            shopName: this.shopName
+                                        } as UTSJSONObject;
+                                        uni.setStorageSync('user_info', JSON.stringify(updatedInfo));
+                                    }
+                                    catch (e: any) {
+                                        console.error('更新本地卖家状态失败:', e, " at pages/user/profile.uvue:654");
+                                    }
+                                }
+                                uni.showToast({
+                                    title: '开通成功！',
+                                    icon: 'success',
+                                    duration: 2000
+                                });
+                                // 刷新页面显示身份切换按钮
+                                setTimeout(() => {
+                                    this.checkSellerStatus();
+                                }, 500);
+                            }
+                            else {
+                                const msg = result.message != null ? result.message : '开通失败';
+                                uni.showToast({ title: msg, icon: 'error' });
+                            }
+                        }).catch((error: Any | null) => {
+                            uni.hideLoading();
+                            console.error('开通卖家失败:', error, " at pages/user/profile.uvue:674");
+                            uni.showToast({ title: '开通失败，请稍后重试', icon: 'error' });
+                        });
+                    }
+                }
+            });
+        },
+        checkLoginStatus() {
+            const token = uni.getStorageSync('auth_token');
+            if (token == null || token == '') {
+                uni.showModal({
+                    title: '提示',
+                    content: '请先登录后再访问个人中心',
+                    showCancel: false,
+                    success: () => {
+                        uni.reLaunch({ url: '/pages/login/login' });
+                    }
+                });
+                return;
+            }
+            this.loadUserInfo();
+        },
+        loadUserInfo() {
+            getUserProfile().then((result) => {
+                if (result.code === 200) {
+                    const data = result.data as UTSJSONObject;
+                    if (data != null) {
+                        const id = data.getNumber('id');
+                        const avatar = data.getString('avatar');
+                        const username = data.getString('username');
+                        const email = data.getString('email');
+                        const phone = data.getString('phone');
+                        const nickname = data.getString('nickname');
+                        this.userInfo = {
+                            id: id != null ? id.toInt() : '12345678',
+                            avatar: avatar != null ? avatar : '',
+                            username: username != null ? username : '',
+                            email: email != null ? email : '',
+                            phone: phone != null ? phone : '',
+                            nickname: nickname != null ? nickname : ''
+                        } as UserInfoType;
+                        // 合并保存，避免覆盖丢失 isSeller/shopName/roleCodes 等字段
+                        const storedInfo = uni.getStorageSync('user_info');
+                        let roleCodes: Any | null = null;
+                        let isSeller: boolean = false;
+                        let shopName: string = '';
+                        if (storedInfo != null && storedInfo != '') {
+                            try {
+                                const oldInfo = UTSAndroid.consoleDebugError(JSON.parse(storedInfo as string), " at pages/user/profile.uvue:724") as UTSJSONObject;
+                                roleCodes = oldInfo.getAny('roleCodes');
+                                isSeller = oldInfo.getBoolean('isSeller') == true;
+                                shopName = oldInfo.getString('shopName') ?? '';
+                            }
+                            catch (e: any) {
+                                console.error('解析旧用户信息失败:', e, " at pages/user/profile.uvue:729");
+                            }
+                        }
+                        const mergedUserInfo = { __$originalPosition: new UTSSourceMapPosition("mergedUserInfo", "pages/user/profile.uvue", 733, 13),
+                            id: this.userInfo.id,
+                            username: this.userInfo.username,
+                            nickname: this.userInfo.nickname,
+                            avatar: this.userInfo.avatar,
+                            email: this.userInfo.email,
+                            phone: this.userInfo.phone,
+                            roleCodes: roleCodes,
+                            isSeller: isSeller,
+                            shopName: shopName
+                        } as UTSJSONObject;
+                        uni.setStorageSync('user_info', JSON.stringify(mergedUserInfo));
+                    }
+                }
+            }).catch((error) => {
+                console.error('获取用户信息失败:', error, " at pages/user/profile.uvue:748");
+                const errStr = error != null ? error.toString() : '';
+                const errMsg = errStr != '' ? errStr : '';
+                // 检查401状态码或特定的Token错误信息
+                if (errMsg != '' && (errMsg.includes('401') || errMsg.includes('Token') || errMsg.includes('过期') || errMsg.includes('无效'))) {
+                    uni.removeStorageSync('auth_token');
+                    uni.removeStorageSync('user_info');
+                    uni.reLaunch({ url: '/pages/login/login' });
+                }
+            });
+            // 加载订单统计数据
+            this.loadOrderStats();
+        },
+        loadOrderStats() {
+            getOrderCount().then((result) => {
+                if (result.code === 200) {
+                    const data = result.data as UTSJSONObject;
+                    if (data != null) {
+                        const unpaid = (data.getNumber('unpaid') ?? 0).toInt();
+                        const unshipped = (data.getNumber('unshipped') ?? 0).toInt();
+                        const shipped = (data.getNumber('shipped') ?? 0).toInt();
+                        const completed = (data.getNumber('completed') ?? 0).toInt();
+                        const total = (data.getNumber('total') ?? 0).toInt();
+                        this.stats = {
+                            orders: total,
+                            pending: unpaid,
+                            shipped: shipped,
+                            favorites: this.stats.favorites // 收藏夹（通过loadCollectionCount更新）
+                        } as StatsType;
+                    }
+                }
+            }).catch((error) => {
+                console.error('获取订单统计失败:', error, " at pages/user/profile.uvue:782");
+                // 失败时保持默认值，不影响页面显示
+            });
+            // 加载收藏总数
+            this.loadCollectionCount();
+        },
+        loadCollectionCount() {
+            getCollectionCount().then((result) => {
+                if (result.code === 200) {
+                    const count = result.data as number;
+                    this.stats.favorites = count != null ? count : 0;
+                }
+            }).catch((error) => {
+                console.error('获取收藏总数失败:', error, " at pages/user/profile.uvue:796");
+                // 失败时保持默认值，不影响页面显示
+            });
+        },
+        handleImageError() {
+            this.userInfo.avatar = this.defaultAvatar;
+        },
+        handleUploadAvatar() {
+            uni.showActionSheet({
+                itemList: ['拍照', '从相册选择'],
+                success: (res) => {
+                    const type = res.tapIndex === 0 ? 'camera' : 'album';
+                    uni.chooseImage({
+                        sourceType: [type],
+                        count: 1,
+                        success: (imgRes) => {
+                            if (imgRes.tempFilePaths.length > 0) {
+                                this.uploadAvatarFile(imgRes.tempFilePaths[0]);
+                            }
+                        }
+                    });
+                }
+            });
+        },
+        uploadAvatarFile(filePath: string) {
+            if (this.isLoading)
+                return;
+            this.isLoading = true;
+            uni.showLoading({ title: '上传中...' });
+            uploadAvatar(filePath).then((result) => {
+                if (result != null) {
+                    const code = (result.getNumber('code') ?? 0).toInt();
+                    if (code === 200) {
+                        const data = result.getString('data') ?? '';
+                        this.userInfo.avatar = data;
+                        this.imageKey++;
+                        const storedInfo = uni.getStorageSync('user_info');
+                        if (storedInfo != null && storedInfo != '') {
+                            const infoStr = storedInfo as string;
+                            const info = UTSAndroid.consoleDebugError(JSON.parse(infoStr), " at pages/user/profile.uvue:836") as UTSJSONObject;
+                            const updatedInfo = { __$originalPosition: new UTSSourceMapPosition("updatedInfo", "pages/user/profile.uvue", 837, 14),
+                                id: info.getNumber('id') != null ? info.getNumber('id')!.toInt() : 0,
+                                username: info.getString('username') ?? '',
+                                nickname: info.getString('nickname') ?? '',
+                                avatar: data,
+                                email: info.getString('email') ?? '',
+                                phone: info.getString('phone') ?? '',
+                                roleCodes: info.getAny('roleCodes'),
+                                isSeller: info.getBoolean('isSeller') == true,
+                                shopName: info.getString('shopName') ?? ''
+                            } as UTSJSONObject;
+                            uni.setStorageSync('user_info', JSON.stringify(updatedInfo));
+                        }
+                        uni.showToast({ title: '头像上传成功', icon: 'success' });
+                    }
+                    else {
+                        const msg = result.getString('message') ?? '上传失败';
+                        uni.showToast({ title: msg, icon: 'error' });
+                    }
+                }
+                else {
+                    uni.showToast({ title: '上传失败', icon: 'error' });
+                }
+                this.isLoading = false;
+                uni.hideLoading();
+            }).catch((error) => {
+                uni.showToast({ title: '上传失败', icon: 'error' });
+                this.isLoading = false;
+                uni.hideLoading();
+            });
+        },
+        handleSettings() {
+            uni.navigateTo({ url: '/pages/user/settings' });
+        },
+        handleNavigate(type: string) {
+            const routes = new Map<string, string>([
+                ['products', '/pages/product/list'],
+                ['orders', '/pages/order/list'],
+                ['favorites', '/pages/product/favorites'],
+                ['history', '/pages/product/history'],
+                ['reviews', '/pages/user/reviews'],
+                ['addresses', '/pages/user/address-list'],
+                ['coupons', '/pages/user/coupons'],
+                ['wallet', '/pages/user/wallet'],
+                ['pending', '/pages/order/list?status=pending'],
+                ['shipped', '/pages/order/list?status=shipped'],
+                ['service', '/pages/service/chat']
+            ]);
+            const route = routes.get(type);
+            if (route != null && route != '') {
+                uni.navigateTo({ url: route as string });
+            }
+            else {
+                uni.showToast({ title: '功能开发中', icon: 'none' });
+            }
+        },
+        handleEditProfile() {
+            uni.navigateTo({ url: '/pages/user/edit-profile' });
+        },
+        handleChangePassword() {
+            uni.navigateTo({ url: '/pages/user/change-password' });
+        },
+        handleLogout() {
+            uni.showModal({
+                title: '退出登录',
+                content: '确定要退出登录吗？',
+                confirmText: '退出',
+                confirmColor: '#FF4D4F',
+                success: (res) => {
+                    if (res.confirm) {
+                        logout().then(() => { }).catch(() => { });
+                        uni.removeStorageSync('auth_token');
+                        uni.removeStorageSync('user_info');
+                        uni.reLaunch({ url: '/pages/login/login' });
+                    }
+                }
+            });
+        }
+    }
+});
+export default __sfc__;
+function GenPagesUserProfileRender(this: InstanceType<typeof __sfc__>): any | null {
+    const _ctx = this;
+    const _cache = this.$.renderCache;
+    const _component_BottomNav = resolveComponent("BottomNav");
+    return createElementVNode("view", utsMapOf({ class: "profile-page profile-container" }), [
+        createElementVNode("view", utsMapOf({ class: "bg-shape bg-shape-1" })),
+        createElementVNode("view", utsMapOf({ class: "bg-shape bg-shape-2" })),
+        createElementVNode("view", utsMapOf({ class: "header" }), [
+            isTrue(_ctx.isSeller)
+                ? createElementVNode("view", utsMapOf({
+                    key: 0,
+                    class: "switch-role-btn",
+                    onClick: _ctx.handleSwitchRole
+                }), [
+                    createElementVNode("text", utsMapOf({ class: "switch-icon" }), "🔄"),
+                    createElementVNode("text", utsMapOf({ class: "switch-text" }), toDisplayString(_ctx.currentRole == 'seller' ? '切换买家' : '切换卖家'), 1 /* TEXT */)
+                ], 8 /* PROPS */, ["onClick"])
+                : createElementVNode("view", utsMapOf({
+                    key: 1,
+                    class: "header-spacer"
+                })),
+            createElementVNode("view", utsMapOf({
+                class: "settings-btn",
+                onClick: _ctx.handleSettings
+            }), [
+                createElementVNode("text", utsMapOf({ class: "settings-icon" }), "⚙️")
+            ], 8 /* PROPS */, ["onClick"])
+        ]),
+        createElementVNode("scroll-view", utsMapOf({
+            class: "main-content",
+            "scroll-y": "true",
+            "show-scrollbar": false
+        }), [
+            _ctx.currentRole == 'buyer'
+                ? createElementVNode("view", utsMapOf({ key: 0 }), [
+                    createElementVNode("view", utsMapOf({ class: "role-status-bar buyer-mode" }), [
+                        createElementVNode("text", utsMapOf({ class: "role-icon" }), "🛒"),
+                        createElementVNode("text", utsMapOf({ class: "role-text" }), "买家模式")
+                    ]),
+                    createElementVNode("view", utsMapOf({ class: "profile-card" }), [
+                        createElementVNode("view", utsMapOf({ class: "profile-top" }), [
+                            createElementVNode("view", utsMapOf({
+                                class: "avatar-wrapper",
+                                onClick: _ctx.handleUploadAvatar
+                            }), [
+                                createElementVNode("image", utsMapOf({
+                                    key: _ctx.imageKey,
+                                    src: _ctx.getAvatarUrl(),
+                                    class: "avatar",
+                                    mode: "aspectFill",
+                                    onError: _ctx.handleImageError
+                                }), null, 40 /* PROPS, NEED_HYDRATION */, ["src", "onError"]),
+                                createElementVNode("view", utsMapOf({ class: "avatar-edit-badge" }), [
+                                    createElementVNode("text", utsMapOf({ class: "edit-icon" }), "📷")
+                                ])
+                            ], 8 /* PROPS */, ["onClick"]),
+                            createElementVNode("view", utsMapOf({ class: "profile-info" }), [
+                                createElementVNode("text", utsMapOf({ class: "nickname" }), toDisplayString(_ctx.getNickname()), 1 /* TEXT */),
+                                createElementVNode("text", utsMapOf({ class: "username" }), "用户名: " + toDisplayString(_ctx.userInfo.username), 1 /* TEXT */),
+                                createElementVNode("view", utsMapOf({ class: "user-id-tag" }), [
+                                    createElementVNode("text", utsMapOf({ class: "user-id" }), "ID: " + toDisplayString(_ctx.getUserId()), 1 /* TEXT */)
+                                ])
+                            ])
+                        ]),
+                        createElementVNode("view", utsMapOf({ class: "stats-row" }), [
+                            createElementVNode("view", utsMapOf({
+                                class: "stat-item",
+                                onClick: () => { _ctx.handleNavigate('orders'); }
+                            }), [
+                                createElementVNode("text", utsMapOf({ class: "stat-num" }), toDisplayString(_ctx.stats.orders), 1 /* TEXT */),
+                                createElementVNode("text", utsMapOf({ class: "stat-name" }), "全部订单")
+                            ], 8 /* PROPS */, ["onClick"]),
+                            createElementVNode("view", utsMapOf({
+                                class: "stat-item",
+                                onClick: () => { _ctx.handleNavigate('pending'); }
+                            }), [
+                                createElementVNode("text", utsMapOf({ class: "stat-num" }), toDisplayString(_ctx.stats.pending), 1 /* TEXT */),
+                                createElementVNode("text", utsMapOf({ class: "stat-name" }), "待付款")
+                            ], 8 /* PROPS */, ["onClick"]),
+                            createElementVNode("view", utsMapOf({
+                                class: "stat-item",
+                                onClick: () => { _ctx.handleNavigate('shipped'); }
+                            }), [
+                                createElementVNode("text", utsMapOf({ class: "stat-num" }), toDisplayString(_ctx.stats.shipped), 1 /* TEXT */),
+                                createElementVNode("text", utsMapOf({ class: "stat-name" }), "待收货")
+                            ], 8 /* PROPS */, ["onClick"]),
+                            createElementVNode("view", utsMapOf({
+                                class: "stat-item",
+                                onClick: () => { _ctx.handleNavigate('favorites'); }
+                            }), [
+                                createElementVNode("text", utsMapOf({ class: "stat-num" }), toDisplayString(_ctx.stats.favorites), 1 /* TEXT */),
+                                createElementVNode("text", utsMapOf({ class: "stat-name" }), "收藏夹")
+                            ], 8 /* PROPS */, ["onClick"])
+                        ])
+                    ]),
+                    createElementVNode("view", utsMapOf({ class: "section-title" }), "我的服务"),
+                    createElementVNode("view", utsMapOf({ class: "menu-grid" }), [
+                        createElementVNode("view", utsMapOf({
+                            class: "menu-item",
+                            onClick: () => { _ctx.handleNavigate('addresses'); }
+                        }), [
+                            createElementVNode("view", utsMapOf({ class: "menu-icon-box menu-icon-box-green" }), [
+                                createElementVNode("text", utsMapOf({ class: "menu-icon" }), "📍")
+                            ]),
+                            createElementVNode("text", utsMapOf({ class: "menu-label" }), "地址管理")
+                        ], 8 /* PROPS */, ["onClick"]),
+                        createElementVNode("view", utsMapOf({
+                            class: "menu-item",
+                            onClick: () => { _ctx.handleNavigate('coupons'); }
+                        }), [
+                            createElementVNode("view", utsMapOf({ class: "menu-icon-box menu-icon-box-orange" }), [
+                                createElementVNode("text", utsMapOf({ class: "menu-icon" }), "🎟️")
+                            ]),
+                            createElementVNode("text", utsMapOf({ class: "menu-label" }), "优惠券")
+                        ], 8 /* PROPS */, ["onClick"]),
+                        createElementVNode("view", utsMapOf({
+                            class: "menu-item",
+                            onClick: () => { _ctx.handleNavigate('history'); }
+                        }), [
+                            createElementVNode("view", utsMapOf({ class: "menu-icon-box menu-icon-box-purple" }), [
+                                createElementVNode("text", utsMapOf({ class: "menu-icon" }), "📚")
+                            ]),
+                            createElementVNode("text", utsMapOf({ class: "menu-label" }), "浏览历史")
+                        ], 8 /* PROPS */, ["onClick"]),
+                        createElementVNode("view", utsMapOf({
+                            class: "menu-item",
+                            onClick: () => { _ctx.handleNavigate('reviews'); }
+                        }), [
+                            createElementVNode("view", utsMapOf({ class: "menu-icon-box menu-icon-box-cyan" }), [
+                                createElementVNode("text", utsMapOf({ class: "menu-icon" }), "⭐")
+                            ]),
+                            createElementVNode("text", utsMapOf({ class: "menu-label" }), "我的评价")
+                        ], 8 /* PROPS */, ["onClick"]),
+                        createElementVNode("view", utsMapOf({
+                            class: "menu-item",
+                            onClick: () => { _ctx.handleNavigate('wallet'); }
+                        }), [
+                            createElementVNode("view", utsMapOf({ class: "menu-icon-box menu-icon-box-red" }), [
+                                createElementVNode("text", utsMapOf({ class: "menu-icon" }), "💰")
+                            ]),
+                            createElementVNode("text", utsMapOf({ class: "menu-label" }), "我的钱包")
+                        ], 8 /* PROPS */, ["onClick"]),
+                        createElementVNode("view", utsMapOf({
+                            class: "menu-item",
+                            onClick: _ctx.handleChangePassword
+                        }), [
+                            createElementVNode("view", utsMapOf({ class: "menu-icon-box menu-icon-box-indigo" }), [
+                                createElementVNode("text", utsMapOf({ class: "menu-icon" }), "🔒")
+                            ]),
+                            createElementVNode("text", utsMapOf({ class: "menu-label" }), "修改密码")
+                        ], 8 /* PROPS */, ["onClick"]),
+                        createElementVNode("view", utsMapOf({
+                            class: "menu-item",
+                            onClick: () => { _ctx.handleNavigate('service'); }
+                        }), [
+                            createElementVNode("view", utsMapOf({ class: "menu-icon-box menu-icon-box-teal" }), [
+                                createElementVNode("text", utsMapOf({ class: "menu-icon" }), "💬")
+                            ]),
+                            createElementVNode("text", utsMapOf({ class: "menu-label" }), "客服")
+                        ], 8 /* PROPS */, ["onClick"]),
+                        isTrue(!_ctx.isSeller)
+                            ? createElementVNode("view", utsMapOf({
+                                key: 0,
+                                class: "menu-item",
+                                onClick: _ctx.handleBecomeSeller
+                            }), [
+                                createElementVNode("view", utsMapOf({ class: "menu-icon-box menu-icon-box-blue" }), [
+                                    createElementVNode("text", utsMapOf({ class: "menu-icon" }), "🏪")
+                                ]),
+                                createElementVNode("text", utsMapOf({ class: "menu-label" }), "成为商家")
+                            ], 8 /* PROPS */, ["onClick"])
+                            : createCommentVNode("v-if", true)
+                    ]),
+                    createElementVNode("view", utsMapOf({ class: "buyer-tips" }), [
+                        createElementVNode("view", utsMapOf({ class: "tips-content" }), [
+                            createElementVNode("text", utsMapOf({ class: "tips-title" }), "💡 购物小贴士"),
+                            createElementVNode("text", utsMapOf({ class: "tips-desc" }), "收藏喜欢的商品，及时关注优惠活动，享受更多实惠~")
+                        ])
+                    ]),
+                    createElementVNode("view", utsMapOf({
+                        class: "logout-btn",
+                        onClick: _ctx.handleLogout
+                    }), [
+                        createElementVNode("text", utsMapOf({ class: "logout-icon" }), "🚪"),
+                        createElementVNode("text", utsMapOf({ class: "logout-text" }), "退出登录")
+                    ], 8 /* PROPS */, ["onClick"])
+                ])
+                : createCommentVNode("v-if", true),
+            _ctx.currentRole == 'seller'
+                ? createElementVNode("view", utsMapOf({ key: 1 }), [
+                    createElementVNode("view", utsMapOf({ class: "role-status-bar seller-mode" }), [
+                        createElementVNode("text", utsMapOf({ class: "role-icon" }), "🏪"),
+                        createElementVNode("text", utsMapOf({ class: "role-text role-text-seller" }), "商家模式")
+                    ]),
+                    createElementVNode("view", utsMapOf({ class: "seller-profile-card" }), [
+                        createElementVNode("view", utsMapOf({ class: "seller-card-bg" })),
+                        createElementVNode("view", utsMapOf({ class: "seller-main-content" }), [
+                            createElementVNode("view", utsMapOf({ class: "seller-profile-header" }), [
+                                createElementVNode("view", utsMapOf({ class: "seller-avatar-box" }), [
+                                    createElementVNode("image", utsMapOf({
+                                        key: _ctx.imageKey,
+                                        src: _ctx.getAvatarUrl(),
+                                        class: "seller-avatar-img",
+                                        mode: "aspectFill",
+                                        onError: _ctx.handleImageError
+                                    }), null, 40 /* PROPS, NEED_HYDRATION */, ["src", "onError"]),
+                                    createElementVNode("view", utsMapOf({ class: "seller-verify-badge" }), [
+                                        createElementVNode("text", utsMapOf({ class: "verify-icon" }), "✓")
+                                    ])
+                                ]),
+                                createElementVNode("view", utsMapOf({ class: "seller-basic-info" }), [
+                                    createElementVNode("view", utsMapOf({ class: "shop-name-row" }), [
+                                        createElementVNode("text", utsMapOf({ class: "shop-name-text" }), toDisplayString(_ctx.shopName != '' ? _ctx.shopName : '我的店铺'), 1 /* TEXT */),
+                                        createElementVNode("view", utsMapOf({ class: "shop-level-tag" }), [
+                                            createElementVNode("text", utsMapOf({ class: "level-text" }), "Lv5")
+                                        ])
+                                    ]),
+                                    createElementVNode("text", utsMapOf({ class: "seller-id-text" }), "ID: " + toDisplayString(_ctx.userInfo.username), 1 /* TEXT */),
+                                    createElementVNode("view", utsMapOf({ class: "seller-rating-row" }), [
+                                        createElementVNode("text", utsMapOf({ class: "rating-stars" }), "⭐⭐⭐⭐⭐"),
+                                        createElementVNode("text", utsMapOf({ class: "rating-score" }), "4.8"),
+                                        createElementVNode("text", utsMapOf({ class: "rating-count" }), "(128评价)")
+                                    ])
+                                ])
+                            ]),
+                            createElementVNode("view", utsMapOf({ class: "seller-stats-grid" }), [
+                                createElementVNode("view", utsMapOf({ class: "stat-card stat-card-1" }), [
+                                    createElementVNode("text", utsMapOf({ class: "stat-icon" }), "📦"),
+                                    createElementVNode("text", utsMapOf({ class: "stat-number" }), toDisplayString(_ctx.sellerOrderStats['totalCount'] ?? 0), 1 /* TEXT */),
+                                    createElementVNode("text", utsMapOf({ class: "stat-label" }), "订单总数")
+                                ]),
+                                createElementVNode("view", utsMapOf({ class: "stat-card stat-card-2" }), [
+                                    createElementVNode("text", utsMapOf({ class: "stat-icon" }), "🚚"),
+                                    createElementVNode("text", utsMapOf({ class: "stat-number" }), toDisplayString(_ctx.sellerOrderStats['waitShipCount'] ?? 0), 1 /* TEXT */),
+                                    createElementVNode("text", utsMapOf({ class: "stat-label" }), "待发货")
+                                ]),
+                                createElementVNode("view", utsMapOf({ class: "stat-card stat-card-3" }), [
+                                    createElementVNode("text", utsMapOf({ class: "stat-icon" }), "✅"),
+                                    createElementVNode("text", utsMapOf({ class: "stat-number" }), toDisplayString(_ctx.sellerOrderStats['finishedCount'] ?? 0), 1 /* TEXT */),
+                                    createElementVNode("text", utsMapOf({ class: "stat-label" }), "已完成")
+                                ])
+                            ])
+                        ])
+                    ]),
+                    isTrue(_ctx.isAdmin)
+                        ? createElementVNode("view", utsMapOf({
+                            key: 0,
+                            class: "admin-entry-section"
+                        }), [
+                            createElementVNode("view", utsMapOf({
+                                class: "admin-entry-card",
+                                onClick: _ctx.handleAdminNavigate
+                            }), [
+                                createElementVNode("view", utsMapOf({ class: "admin-entry-left" }), [
+                                    createElementVNode("text", utsMapOf({ class: "admin-entry-icon" }), "👑"),
+                                    createElementVNode("view", utsMapOf({ class: "admin-entry-info" }), [
+                                        createElementVNode("text", utsMapOf({ class: "admin-entry-title" }), "管理员后台"),
+                                        createElementVNode("text", utsMapOf({ class: "admin-entry-desc" }), "平台管理与数据监控")
+                                    ])
+                                ]),
+                                createElementVNode("text", utsMapOf({ class: "admin-entry-arrow" }), "→")
+                            ], 8 /* PROPS */, ["onClick"])
+                        ])
+                        : createCommentVNode("v-if", true),
+                    createElementVNode("view", utsMapOf({ class: "section-title" }), "商家服务"),
+                    createElementVNode("view", utsMapOf({ class: "menu-grid" }), [
+                        createElementVNode("view", utsMapOf({
+                            class: "menu-item",
+                            onClick: () => { _ctx.handleSellerNavigate('products'); }
+                        }), [
+                            createElementVNode("view", utsMapOf({ class: "menu-icon-box menu-icon-box-blue" }), [
+                                createElementVNode("text", utsMapOf({ class: "menu-icon" }), "📦")
+                            ]),
+                            createElementVNode("text", utsMapOf({ class: "menu-label" }), "商品管理")
+                        ], 8 /* PROPS */, ["onClick"]),
+                        createElementVNode("view", utsMapOf({
+                            class: "menu-item",
+                            onClick: () => { _ctx.handleSellerNavigate('inventory'); }
+                        }), [
+                            createElementVNode("view", utsMapOf({ class: "menu-icon-box menu-icon-box-green" }), [
+                                createElementVNode("text", utsMapOf({ class: "menu-icon" }), "📊")
+                            ]),
+                            createElementVNode("text", utsMapOf({ class: "menu-label" }), "库存管理")
+                        ], 8 /* PROPS */, ["onClick"]),
+                        createElementVNode("view", utsMapOf({
+                            class: "menu-item",
+                            onClick: () => { _ctx.handleSellerNavigate('statistics'); }
+                        }), [
+                            createElementVNode("view", utsMapOf({ class: "menu-icon-box menu-icon-box-purple" }), [
+                                createElementVNode("text", utsMapOf({ class: "menu-icon" }), "📈")
+                            ]),
+                            createElementVNode("text", utsMapOf({ class: "menu-label" }), "销售统计")
+                        ], 8 /* PROPS */, ["onClick"]),
+                        createElementVNode("view", utsMapOf({
+                            class: "menu-item",
+                            onClick: () => { _ctx.handleSellerNavigate('account'); }
+                        }), [
+                            createElementVNode("view", utsMapOf({ class: "menu-icon-box menu-icon-box-red" }), [
+                                createElementVNode("text", utsMapOf({ class: "menu-icon" }), "💰")
+                            ]),
+                            createElementVNode("text", utsMapOf({ class: "menu-label" }), "商家账户")
+                        ], 8 /* PROPS */, ["onClick"]),
+                        createElementVNode("view", utsMapOf({
+                            class: "menu-item",
+                            onClick: () => { _ctx.handleSellerNavigate('reviews'); }
+                        }), [
+                            createElementVNode("view", utsMapOf({ class: "menu-icon-box menu-icon-box-orange" }), [
+                                createElementVNode("text", utsMapOf({ class: "menu-icon" }), "⭐")
+                            ]),
+                            createElementVNode("text", utsMapOf({ class: "menu-label" }), "评价管理")
+                        ], 8 /* PROPS */, ["onClick"])
+                    ]),
+                    createElementVNode("view", utsMapOf({ class: "seller-tips" }), [
+                        createElementVNode("view", utsMapOf({ class: "tips-content" }), [
+                            createElementVNode("text", utsMapOf({ class: "tips-title" }), "💡 经营小贴士"),
+                            createElementVNode("text", utsMapOf({ class: "tips-desc" }), "及时处理订单，保持良好的发货速度可以提升店铺评分哦~")
+                        ])
+                    ]),
+                    createElementVNode("view", utsMapOf({
+                        class: "logout-btn",
+                        onClick: _ctx.handleLogout
+                    }), [
+                        createElementVNode("text", utsMapOf({ class: "logout-icon" }), "🚪"),
+                        createElementVNode("text", utsMapOf({ class: "logout-text" }), "退出登录")
+                    ], 8 /* PROPS */, ["onClick"])
+                ])
+                : createCommentVNode("v-if", true)
+        ]),
+        createVNode(_component_BottomNav)
+    ]);
+}
+const GenPagesUserProfileStyles = [utsMapOf([["profile-page", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "column"], ["backgroundColor", "#F5F7FA"]]))], ["profile-container", padStyleMapOf(utsMapOf([["height", "100%"], ["backgroundColor", "#F5F7FA"], ["position", "relative"], ["overflow", "hidden"], ["display", "flex"], ["flexDirection", "column"]]))], ["bg-shape", padStyleMapOf(utsMapOf([["position", "absolute"], ["borderTopLeftRadius", 999], ["borderTopRightRadius", 999], ["borderBottomRightRadius", 999], ["borderBottomLeftRadius", 999], ["opacity", 0.1], ["zIndex", 0]]))], ["bg-shape-1", padStyleMapOf(utsMapOf([["width", 300], ["height", 300], ["backgroundColor", "#0066CC"], ["top", -100], ["left", -50]]))], ["bg-shape-2", padStyleMapOf(utsMapOf([["width", 200], ["height", 200], ["backgroundColor", "#52C41A"], ["top", 50], ["right", -50]]))], ["header", padStyleMapOf(utsMapOf([["height", 44], ["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"], ["alignItems", "center"], ["paddingTop", 0], ["paddingRight", 24], ["paddingBottom", 0], ["paddingLeft", 24], ["marginTop", CSS_VAR_STATUS_BAR_HEIGHT], ["position", "relative"], ["zIndex", 10], ["flexShrink", 0]]))], ["header-spacer", padStyleMapOf(utsMapOf([["flex", 1]]))], ["switch-role-btn", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["backgroundColor", "rgba(255,255,255,0.9)"], ["borderTopLeftRadius", 16], ["borderTopRightRadius", 16], ["borderBottomRightRadius", 16], ["borderBottomLeftRadius", 16], ["paddingTop", 6], ["paddingRight", 12], ["paddingBottom", 6], ["paddingLeft", 12], ["boxShadow", "0 2px 6px rgba(0, 0, 0, 0.1)"]]))], ["switch-icon", padStyleMapOf(utsMapOf([["fontSize", 14], ["marginRight", 4]]))], ["switch-text", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#0066CC"], ["fontWeight", "bold"]]))], ["settings-btn", padStyleMapOf(utsMapOf([["width", 40], ["height", 40], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"], ["backgroundColor", "rgba(255,255,255,0.8)"], ["borderTopLeftRadius", 20], ["borderTopRightRadius", 20], ["borderBottomRightRadius", 20], ["borderBottomLeftRadius", 20], ["boxShadow", "0 2px 6px rgba(0, 0, 0, 0.1)"]]))], ["settings-icon", padStyleMapOf(utsMapOf([["fontSize", 20]]))], ["main-content", padStyleMapOf(utsMapOf([["flex", 1], ["paddingTop", 16], ["paddingRight", 24], ["paddingBottom", "160rpx"], ["paddingLeft", 24], ["position", "relative"], ["zIndex", 1]]))], ["role-status-bar", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["justifyContent", "center"], ["paddingTop", 10], ["paddingRight", 16], ["paddingBottom", 10], ["paddingLeft", 16], ["borderTopLeftRadius", 8], ["borderTopRightRadius", 8], ["borderBottomRightRadius", 8], ["borderBottomLeftRadius", 8], ["marginBottom", 16], ["boxShadow", "0 2px 8px rgba(0, 0, 0, 0.08)"]]))], ["buyer-mode", padStyleMapOf(utsMapOf([["backgroundImage", "linear-gradient(135deg, #E6F4FF 0%, #BAE0FF 100%)"], ["backgroundColor", "rgba(0,0,0,0)"], ["borderTopWidth", 1], ["borderRightWidth", 1], ["borderBottomWidth", 1], ["borderLeftWidth", 1], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#91CAFF"], ["borderRightColor", "#91CAFF"], ["borderBottomColor", "#91CAFF"], ["borderLeftColor", "#91CAFF"]]))], ["seller-mode", padStyleMapOf(utsMapOf([["backgroundImage", "linear-gradient(135deg, #FFF7E6 0%, #FFE7BA 100%)"], ["backgroundColor", "rgba(0,0,0,0)"], ["borderTopWidth", 1], ["borderRightWidth", 1], ["borderBottomWidth", 1], ["borderLeftWidth", 1], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#FFD591"], ["borderRightColor", "#FFD591"], ["borderBottomColor", "#FFD591"], ["borderLeftColor", "#FFD591"]]))], ["role-icon", padStyleMapOf(utsMapOf([["fontSize", 18], ["marginRight", 8]]))], ["role-text", padStyleMapOf(utsMapOf([["fontSize", 15], ["fontWeight", "700"], ["color", "#0066CC"]]))], ["role-text-seller", padStyleMapOf(utsMapOf([["color", "#FF8C00"]]))], ["profile-card", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["borderTopLeftRadius", 16], ["borderTopRightRadius", 16], ["borderBottomRightRadius", 16], ["borderBottomLeftRadius", 16], ["paddingTop", 24], ["paddingRight", 24], ["paddingBottom", 24], ["paddingLeft", 24], ["boxShadow", "0 4px 16px rgba(0, 0, 0, 0.04)"], ["marginBottom", 24]]))], ["profile-top", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["marginBottom", 24]]))], ["avatar-wrapper", padStyleMapOf(utsMapOf([["position", "relative"], ["marginRight", 16]]))], ["avatar", padStyleMapOf(utsMapOf([["width", 72], ["height", 72], ["borderTopLeftRadius", 36], ["borderTopRightRadius", 36], ["borderBottomRightRadius", 36], ["borderBottomLeftRadius", 36], ["borderTopWidth", 3], ["borderRightWidth", 3], ["borderBottomWidth", 3], ["borderLeftWidth", 3], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#ffffff"], ["borderRightColor", "#ffffff"], ["borderBottomColor", "#ffffff"], ["borderLeftColor", "#ffffff"], ["boxShadow", "0 4px 12px rgba(0, 0, 0, 0.08)"], ["backgroundColor", "#f0f0f0"]]))], ["avatar-edit-badge", padStyleMapOf(utsMapOf([["position", "absolute"], ["bottom", 0], ["right", 0], ["width", 24], ["height", 24], ["backgroundColor", "#0066CC"], ["borderTopLeftRadius", 12], ["borderTopRightRadius", 12], ["borderBottomRightRadius", 12], ["borderBottomLeftRadius", 12], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"], ["borderTopWidth", 2], ["borderRightWidth", 2], ["borderBottomWidth", 2], ["borderLeftWidth", 2], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#ffffff"], ["borderRightColor", "#ffffff"], ["borderBottomColor", "#ffffff"], ["borderLeftColor", "#ffffff"]]))], ["edit-icon", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#ffffff"]]))], ["profile-info", padStyleMapOf(utsMapOf([["flex", 1], ["display", "flex"], ["flexDirection", "column"], ["justifyContent", "center"]]))], ["nickname", padStyleMapOf(utsMapOf([["fontSize", 20], ["fontWeight", "700"], ["color", "#333333"], ["marginBottom", 4]]))], ["username", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"], ["marginBottom", 4]]))], ["user-id-tag", padStyleMapOf(utsMapOf([["backgroundColor", "#F5F7FA"], ["paddingTop", 2], ["paddingRight", 8], ["paddingBottom", 2], ["paddingLeft", 8], ["borderTopLeftRadius", 10], ["borderTopRightRadius", 10], ["borderBottomRightRadius", 10], ["borderBottomLeftRadius", 10], ["alignSelf", "flex-start"]]))], ["user-id", padStyleMapOf(utsMapOf([["fontSize", 10], ["color", "#999999"]]))], ["stats-row", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"], ["paddingTop", 16], ["borderTopWidth", 1], ["borderTopStyle", "solid"], ["borderTopColor", "#F5F5F5"]]))], ["stat-item", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"], ["flex", 1]]))], ["stat-num", padStyleMapOf(utsMapOf([["fontSize", 20], ["fontWeight", "700"], ["color", "#333333"], ["marginBottom", 6]]))], ["stat-name", padStyleMapOf(utsMapOf([["fontSize", 10], ["color", "#999999"]]))], ["section-title", padStyleMapOf(utsMapOf([["fontSize", 16], ["fontWeight", "700"], ["color", "#333333"], ["marginBottom", 16], ["marginLeft", 4]]))], ["menu-grid", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["flexWrap", "wrap"], ["backgroundColor", "#ffffff"], ["borderTopLeftRadius", 16], ["borderTopRightRadius", 16], ["borderBottomRightRadius", 16], ["borderBottomLeftRadius", 16], ["paddingTop", 16], ["paddingRight", 16], ["paddingBottom", 16], ["paddingLeft", 16], ["boxShadow", "0 4px 16px rgba(0, 0, 0, 0.04)"], ["marginBottom", 24]]))], ["menu-item", padStyleMapOf(utsMapOf([["width", "25%"], ["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"], ["marginBottom", 24]]))], ["menu-icon-box", padStyleMapOf(utsMapOf([["width", 44], ["height", 44], ["borderTopLeftRadius", 16], ["borderTopRightRadius", 16], ["borderBottomRightRadius", 16], ["borderBottomLeftRadius", 16], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"], ["marginBottom", 8]]))], ["menu-icon-box-blue", padStyleMapOf(utsMapOf([["backgroundColor", "rgba(0,102,204,0.1)"]]))], ["menu-icon-box-green", padStyleMapOf(utsMapOf([["backgroundColor", "rgba(82,196,26,0.1)"]]))], ["menu-icon-box-orange", padStyleMapOf(utsMapOf([["backgroundColor", "rgba(255,122,69,0.1)"]]))], ["menu-icon-box-purple", padStyleMapOf(utsMapOf([["backgroundColor", "rgba(114,46,209,0.1)"]]))], ["menu-icon-box-red", padStyleMapOf(utsMapOf([["backgroundColor", "rgba(255,77,79,0.1)"]]))], ["menu-icon-box-cyan", padStyleMapOf(utsMapOf([["backgroundColor", "rgba(19,194,194,0.1)"]]))], ["menu-icon-box-teal", padStyleMapOf(utsMapOf([["backgroundColor", "rgba(0,150,136,0.1)"]]))], ["menu-icon-box-indigo", padStyleMapOf(utsMapOf([["backgroundColor", "rgba(63,81,181,0.1)"]]))], ["menu-icon", padStyleMapOf(utsMapOf([["fontSize", 20]]))], ["menu-label", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#333333"]]))], ["promo-banner", padStyleMapOf(utsMapOf([["backgroundImage", "linear-gradient(135deg, #0066CC 0%, #1890FF 100%)"], ["backgroundColor", "rgba(0,0,0,0)"], ["borderTopLeftRadius", 12], ["borderTopRightRadius", 12], ["borderBottomRightRadius", 12], ["borderBottomLeftRadius", 12], ["paddingTop", 16], ["paddingRight", 24], ["paddingBottom", 16], ["paddingLeft", 24], ["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["justifyContent", "space-between"], ["boxShadow", "0 4px 12px rgba(0, 102, 204, 0.2)"], ["marginBottom", 16]]))], ["promo-content", padStyleMapOf(utsMapOf([["flex", 1], ["display", "flex"], ["flexDirection", "column"]]))], ["promo-title", padStyleMapOf(utsMapOf([["fontSize", 16], ["fontWeight", "700"], ["color", "#ffffff"], ["marginBottom", 4]]))], ["promo-desc", padStyleMapOf(utsMapOf([["fontSize", 10], ["color", "rgba(255,255,255,0.8)"]]))], ["promo-btn", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["color", "#0066CC"], ["fontSize", 10], ["fontWeight", "700"], ["borderTopLeftRadius", 14], ["borderTopRightRadius", 14], ["borderBottomRightRadius", 14], ["borderBottomLeftRadius", 14], ["paddingTop", 0], ["paddingRight", 12], ["paddingBottom", 0], ["paddingLeft", 12], ["height", 28], ["lineHeight", "28px"], ["marginLeft", 16]]))], ["buyer-tips", padStyleMapOf(utsMapOf([["backgroundColor", "#E6F7FF"], ["borderTopLeftRadius", 12], ["borderTopRightRadius", 12], ["borderBottomRightRadius", 12], ["borderBottomLeftRadius", 12], ["paddingTop", 16], ["paddingRight", 24], ["paddingBottom", 16], ["paddingLeft", 24], ["borderTopWidth", 1], ["borderRightWidth", 1], ["borderBottomWidth", 1], ["borderLeftWidth", 1], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#BAE7FF"], ["borderRightColor", "#BAE7FF"], ["borderBottomColor", "#BAE7FF"], ["borderLeftColor", "#BAE7FF"], ["marginTop", 16], ["marginBottom", 16]]))], ["logout-btn", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["color", "#666666"], ["borderTopWidth", 1], ["borderRightWidth", 1], ["borderBottomWidth", 1], ["borderLeftWidth", 1], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#E5E5E5"], ["borderRightColor", "#E5E5E5"], ["borderBottomColor", "#E5E5E5"], ["borderLeftColor", "#E5E5E5"], ["fontSize", 14], ["fontWeight", "400"], ["borderTopLeftRadius", 12], ["borderTopRightRadius", 12], ["borderBottomRightRadius", 12], ["borderBottomLeftRadius", 12], ["height", 48], ["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["justifyContent", "center"], ["boxShadow", "0 2px 8px rgba(0, 0, 0, 0.05)"], ["marginTop", 16], ["marginBottom", 16]]))], ["logout-icon", padStyleMapOf(utsMapOf([["fontSize", 18], ["marginRight", 6]]))], ["logout-text", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#666666"]]))], ["seller-profile-card", padStyleMapOf(utsMapOf([["backgroundImage", "none"], ["backgroundColor", "#ffffff"], ["borderTopLeftRadius", 16], ["borderTopRightRadius", 16], ["borderBottomRightRadius", 16], ["borderBottomLeftRadius", 16], ["overflow", "hidden"], ["boxShadow", "0 4px 16px rgba(0, 0, 0, 0.08)"], ["marginBottom", 24], ["position", "relative"]]))], ["seller-card-bg", padStyleMapOf(utsMapOf([["height", 80], ["backgroundImage", "linear-gradient(135deg, #0066CC 0%, #1890FF 100%)"], ["backgroundColor", "rgba(0,0,0,0)"], ["position", "relative"]]))], ["seller-main-content", padStyleMapOf(utsMapOf([["paddingTop", 0], ["paddingRight", 24], ["paddingBottom", 24], ["paddingLeft", 24], ["marginTop", -40], ["position", "relative"], ["zIndex", 2]]))], ["seller-profile-header", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "flex-start"], ["marginBottom", 16]]))], ["seller-avatar-box", padStyleMapOf(utsMapOf([["position", "relative"], ["marginRight", 12]]))], ["seller-avatar-img", padStyleMapOf(utsMapOf([["width", 88], ["height", 88], ["borderTopLeftRadius", 44], ["borderTopRightRadius", 44], ["borderBottomRightRadius", 44], ["borderBottomLeftRadius", 44], ["borderTopWidth", 4], ["borderRightWidth", 4], ["borderBottomWidth", 4], ["borderLeftWidth", 4], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#ffffff"], ["borderRightColor", "#ffffff"], ["borderBottomColor", "#ffffff"], ["borderLeftColor", "#ffffff"], ["backgroundColor", "#f5f5f5"], ["boxShadow", "0 2px 8px rgba(0, 0, 0, 0.1)"]]))], ["seller-verify-badge", padStyleMapOf(utsMapOf([["position", "absolute"], ["bottom", 2], ["right", 2], ["width", 24], ["height", 24], ["backgroundImage", "linear-gradient(135deg, #52C41A 0%, #73D13D 100%)"], ["backgroundColor", "rgba(0,0,0,0)"], ["borderTopLeftRadius", 12], ["borderTopRightRadius", 12], ["borderBottomRightRadius", 12], ["borderBottomLeftRadius", 12], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"], ["borderTopWidth", 2], ["borderRightWidth", 2], ["borderBottomWidth", 2], ["borderLeftWidth", 2], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#ffffff"], ["borderRightColor", "#ffffff"], ["borderBottomColor", "#ffffff"], ["borderLeftColor", "#ffffff"], ["boxShadow", "0 2px 4px rgba(82, 196, 26, 0.3)"]]))], ["verify-icon", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#ffffff"], ["fontWeight", "700"]]))], ["seller-basic-info", padStyleMapOf(utsMapOf([["flex", 1], ["paddingTop", 48]]))], ["shop-name-row", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["marginBottom", 4]]))], ["shop-name-text", padStyleMapOf(utsMapOf([["fontSize", 20], ["fontWeight", "700"], ["color", "#333333"], ["marginRight", 8]]))], ["shop-level-tag", padStyleMapOf(utsMapOf([["backgroundImage", "linear-gradient(135deg, #FFD700 0%, #FFA500 100%)"], ["backgroundColor", "rgba(0,0,0,0)"], ["paddingTop", 2], ["paddingRight", 8], ["paddingBottom", 2], ["paddingLeft", 8], ["borderTopLeftRadius", 10], ["borderTopRightRadius", 10], ["borderBottomRightRadius", 10], ["borderBottomLeftRadius", 10]]))], ["level-text", padStyleMapOf(utsMapOf([["fontSize", 10], ["color", "#ffffff"], ["fontWeight", "700"]]))], ["seller-id-text", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"], ["marginBottom", 6]]))], ["seller-rating-row", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"]]))], ["rating-stars", padStyleMapOf(utsMapOf([["fontSize", 11], ["marginRight", 4]]))], ["rating-score", padStyleMapOf(utsMapOf([["fontSize", 14], ["fontWeight", "700"], ["color", "#FF8C00"], ["marginRight", 4]]))], ["rating-count", padStyleMapOf(utsMapOf([["fontSize", 11], ["color", "#999999"]]))], ["seller-stats-grid", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"], ["marginTop", 16]]))], ["stat-card", padStyleMapOf(utsMapOf([["flex", 1], ["backgroundImage", "none"], ["backgroundColor", "#F8F9FA"], ["borderTopLeftRadius", 12], ["borderTopRightRadius", 12], ["borderBottomRightRadius", 12], ["borderBottomLeftRadius", 12], ["paddingTop", 12], ["paddingRight", 8], ["paddingBottom", 12], ["paddingLeft", 8], ["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"], ["position", "relative"], ["overflow", "hidden"], ["marginTop", 0], ["marginRight", 5], ["marginBottom", 0], ["marginLeft", 5]]))], ["stat-card-1", padStyleMapOf(utsMapOf([["backgroundImage", "linear-gradient(135deg, #E6F7FF 0%, #BAE7FF 100%)"], ["backgroundColor", "rgba(0,0,0,0)"]]))], ["stat-card-2", padStyleMapOf(utsMapOf([["backgroundImage", "linear-gradient(135deg, #FFF7E6 0%, #FFE7BA 100%)"], ["backgroundColor", "rgba(0,0,0,0)"]]))], ["stat-card-3", padStyleMapOf(utsMapOf([["backgroundImage", "linear-gradient(135deg, #F6FFED 0%, #D9F7BE 100%)"], ["backgroundColor", "rgba(0,0,0,0)"]]))], ["stat-icon", padStyleMapOf(utsMapOf([["fontSize", 24], ["marginBottom", 4]]))], ["stat-number", padStyleMapOf(utsMapOf([["fontSize", 18], ["fontWeight", "700"], ["color", "#333333"], ["marginBottom", 2]]))], ["stat-label", padStyleMapOf(utsMapOf([["fontSize", 11], ["color", "#666666"]]))], ["seller-tips", padStyleMapOf(utsMapOf([["backgroundColor", "#FFF7E6"], ["borderTopLeftRadius", 12], ["borderTopRightRadius", 12], ["borderBottomRightRadius", 12], ["borderBottomLeftRadius", 12], ["paddingTop", 16], ["paddingRight", 24], ["paddingBottom", 16], ["paddingLeft", 24], ["borderTopWidth", 1], ["borderRightWidth", 1], ["borderBottomWidth", 1], ["borderLeftWidth", 1], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#FFE4B5"], ["borderRightColor", "#FFE4B5"], ["borderBottomColor", "#FFE4B5"], ["borderLeftColor", "#FFE4B5"], ["marginTop", 16], ["marginBottom", 16]]))], ["tips-content", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "column"]]))], ["tips-title", padStyleMapOf(utsMapOf([["fontSize", 14], ["fontWeight", "bold"], ["color", "#FF8C00"], ["marginBottom", 4]]))], ["tips-desc", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#996600"], ["lineHeight", 1.5]]))], ["admin-entry-section", padStyleMapOf(utsMapOf([["marginBottom", 24]]))], ["admin-entry-card", padStyleMapOf(utsMapOf([["backgroundImage", "linear-gradient(135deg, #722ED1 0%, #9254DE 100%)"], ["backgroundColor", "rgba(0,0,0,0)"], ["borderTopLeftRadius", 12], ["borderTopRightRadius", 12], ["borderBottomRightRadius", 12], ["borderBottomLeftRadius", 12], ["paddingTop", 16], ["paddingRight", 16], ["paddingBottom", 16], ["paddingLeft", 16], ["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["justifyContent", "space-between"], ["boxShadow", "0 4px 12px rgba(114, 46, 209, 0.3)"], ["position", "relative"], ["overflow", "hidden"]]))], ["admin-entry-left", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["flex", 1], ["zIndex", 1]]))], ["admin-entry-icon", padStyleMapOf(utsMapOf([["fontSize", 36], ["marginRight", 12]]))], ["admin-entry-info", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "column"]]))], ["admin-entry-title", padStyleMapOf(utsMapOf([["fontSize", 17], ["fontWeight", "700"], ["color", "#FFFFFF"], ["marginBottom", 4]]))], ["admin-entry-desc", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "rgba(255,255,255,0.8)"]]))], ["admin-entry-arrow", padStyleMapOf(utsMapOf([["fontSize", 24], ["color", "#FFFFFF"], ["zIndex", 1]]))]])];
+//# sourceMappingURL=profile.uvue.map

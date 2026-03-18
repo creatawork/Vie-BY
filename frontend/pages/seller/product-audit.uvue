@@ -1,0 +1,483 @@
+<template>
+	<view class="page">
+		<!-- 顶部状态筛选栏 -->
+		<view class="filter-header">
+			<view class="status-tabs">
+				<view class="tab-item" :class="{ active: currentStatus === 0 }" @click="switchStatus(0)">
+					<text class="tab-text" :class="{ 'tab-text--active': currentStatus === 0 }">待审核</text>
+					<view class="active-line" v-if="currentStatus === 0"></view>
+				</view>
+				<view class="tab-item" :class="{ active: currentStatus === 1 }" @click="switchStatus(1)">
+					<text class="tab-text" :class="{ 'tab-text--active': currentStatus === 1 }">已通过</text>
+					<view class="active-line" v-if="currentStatus === 1"></view>
+				</view>
+				<view class="tab-item" :class="{ active: currentStatus === 3 }" @click="switchStatus(3)">
+					<text class="tab-text" :class="{ 'tab-text--active': currentStatus === 3 }">已驳回</text>
+					<view class="active-line" v-if="currentStatus === 3"></view>
+				</view>
+			</view>
+		</view>
+
+		<!-- 商品列表 -->
+		<scroll-view class="product-scroll" scroll-y="true" @scrolltolower="loadMore" @refresherrefresh="onRefresh"
+			:refresher-enabled="true" :refresher-triggered="isRefreshing" :show-scrollbar="false">
+			<!-- 加载中 -->
+			<view v-if="isLoading && products.length === 0" class="loading-state">
+				<text class="loading-text">加载中...</text>
+			</view>
+
+			<!-- 商品列表 -->
+			<view v-else class="product-list">
+				<view class="product-card" v-for="product in products" :key="product.id" @click="goToDetail(product.id)">
+					<image class="product-img" :src="product.mainImage" mode="aspectFill"></image>
+					<view class="product-info">
+						<view class="info-top">
+							<text class="product-name">{{ product.productName }}</text>
+							<view class="status-tag" :class="getStatusClass(product.status)">
+								<text class="status-text" :class="getStatusTextClass(product.status)">{{ getStatusText(product.status) }}</text>
+							</view>
+						</view>
+						<view class="info-middle">
+							<view class="price-row">
+								<text class="currency">¥</text>
+								<text class="price">{{ product.currentPrice.toFixed(2) }}</text>
+							</view>
+							<view class="stock-row">
+								<text class="stock-label">库存:</text>
+								<text class="stock-value">{{ product.stock }}</text>
+							</view>
+						</view>
+						<view class="info-bottom">
+							<text class="time-text">{{ product.createTime }}</text>
+							<view class="action-btns" v-if="product.status === 0">
+								<view class="action-btn" @click.stop="handleAudit(product, 1)">
+									<text class="action-btn-text">通过</text>
+								</view>
+								<view class="action-btn action-btn-reject" @click.stop="handleAudit(product, 3)">
+									<text class="action-btn-text action-btn-text-reject">驳回</text>
+								</view>
+							</view>
+						</view>
+					</view>
+				</view>
+			</view>
+
+			<!-- 空状态 -->
+			<view v-if="!isLoading && products.length === 0" class="empty-state">
+				<text class="empty-icon">📦</text>
+				<text class="empty-text">暂无相关商品</text>
+			</view>
+
+			<!-- 加载更多 -->
+			<view v-if="products.length > 0" class="load-more">
+				<text class="load-more-text">{{ hasMore ? '上拉加载更多' : '没有更多了' }}</text>
+			</view>
+
+			<!-- 底部占位 -->
+			<view style="height: 20px;"></view>
+		</scroll-view>
+	</view>
+</template>
+
+<script lang="uts">
+	import { getAdminProducts, auditProduct } from '@/api/product'
+
+	type AdminProductType = {
+		id : number
+		productName : string
+		productCode : string
+		mainImage : string
+		currentPrice : number
+		stock : number
+		salesVolume : number
+		status : number
+		createTime : string
+	}
+
+	export default {
+		data() {
+			return {
+				currentStatus: 0 as number,
+				isLoading: false,
+				isRefreshing: false,
+				hasMore: true,
+				pageNum: 1,
+				pageSize: 10,
+				products: [] as AdminProductType[]
+			}
+		},
+		onLoad() {
+			this.loadProducts()
+		},
+		methods: {
+			loadProducts() {
+				this.isLoading = true
+				getAdminProducts(this.pageNum, this.pageSize, this.currentStatus).then((res) => {
+					const data = res.data as UTSJSONObject
+					const total = (data.getNumber('total') ?? 0).toInt()
+					const records = data.getArray('records')
+					const productList : AdminProductType[] = []
+
+					if (records != null) {
+						for (let i = 0; i < records.length; i++) {
+							const item = records[i] as UTSJSONObject
+							productList.push({
+								id: (item.getNumber('id') ?? 0).toInt(),
+								productName: item.getString('productName') ?? '',
+								productCode: item.getString('productCode') ?? '',
+								mainImage: item.getString('mainImage') ?? '',
+								currentPrice: item.getNumber('currentPrice') ?? 0,
+								stock: (item.getNumber('stock') ?? 0).toInt(),
+								salesVolume: (item.getNumber('salesVolume') ?? 0).toInt(),
+								status: (item.getNumber('status') ?? 0).toInt(),
+								createTime: item.getString('createTime') ?? ''
+							} as AdminProductType)
+						}
+					}
+
+					if (this.pageNum === 1) {
+						this.products = productList
+					} else {
+						this.products = this.products.concat(productList)
+					}
+
+					this.hasMore = this.products.length < total
+					this.isLoading = false
+					this.isRefreshing = false
+				}).catch((err) => {
+					console.error('获取商品列表失败:', err)
+					this.isLoading = false
+					this.isRefreshing = false
+					uni.showToast({ title: '加载失败', icon: 'none' })
+				})
+			},
+			switchStatus(status : number) {
+				if (this.currentStatus === status) return
+				this.currentStatus = status
+				this.pageNum = 1
+				this.products = []
+				this.loadProducts()
+			},
+			onRefresh() {
+				this.isRefreshing = true
+				this.pageNum = 1
+				this.loadProducts()
+			},
+			loadMore() {
+				if (!this.hasMore || this.isLoading) return
+				this.pageNum++
+				this.loadProducts()
+			},
+			getStatusClass(status : number) : string {
+				if (status === 0) return 'status-tag-pending'
+				if (status === 1) return 'status-tag-passed'
+				if (status === 3) return 'status-tag-rejected'
+				return ''
+			},
+			getStatusTextClass(status : number) : string {
+				if (status === 0) return 'status-text-pending'
+				if (status === 1) return 'status-text-passed'
+				if (status === 3) return 'status-text-rejected'
+				return ''
+			},
+			getStatusText(status : number) : string {
+				if (status === 0) return '待审核'
+				if (status === 1) return '已通过'
+				if (status === 3) return '已驳回'
+				return '未知'
+			},
+			goToDetail(productId : number) {
+				uni.navigateTo({ url: `/pages/product/detail?id=${productId}` })
+			},
+			handleAudit(product : AdminProductType, status : number) {
+				const actionText = status === 1 ? '通过' : '驳回'
+				if (status === 3) {
+					uni.showModal({
+						title: '驳回审核',
+						editable: true,
+						placeholderText: '请输入驳回原因',
+						success: (res) => {
+							if (res.confirm) {
+								this.submitAudit(product.id, status, res.content ?? '不符合上架标准')
+							}
+						}
+					})
+				} else {
+					uni.showModal({
+						title: '提示',
+						content: `确定要通过该商品的上架申请吗？`,
+						success: (res) => {
+							if (res.confirm) {
+								this.submitAudit(product.id, status, '符合上架标准')
+							}
+						}
+					})
+				}
+			},
+			submitAudit(productId : number, status : number, remark : string) {
+				auditProduct(productId, status, remark).then(() => {
+					uni.showToast({ title: '操作成功', icon: 'success' })
+					// 从列表中移除或更新状态
+					this.pageNum = 1
+					this.loadProducts()
+				}).catch((err) => {
+					console.error('审核失败:', err)
+					uni.showToast({ title: '操作失败', icon: 'none' })
+				})
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	.page {
+		background-color: #f7f8fa;
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+	}
+
+	.filter-header {
+		background-color: #fff;
+		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+		z-index: 100;
+	}
+
+	.status-tabs {
+		display: flex;
+		flex-direction: row;
+		padding: 0 8px;
+		justify-content: space-around;
+	}
+
+	.tab-item {
+		position: relative;
+		padding: 12px 16px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
+
+	.tab-text {
+		font-size: 14px;
+		color: #666;
+
+		&--active {
+			color: #0066CC;
+			font-weight: 700;
+		}
+	}
+
+	.active-line {
+		position: absolute;
+		bottom: 4px;
+		width: 20px;
+		height: 3px;
+		background-color: #0066CC;
+		border-radius: 2px;
+	}
+
+	.product-scroll {
+		flex: 1;
+		width: 100%;
+	}
+
+	.loading-state {
+		padding: 60px 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.loading-text {
+		font-size: 14px;
+		color: #999;
+	}
+
+	.product-list {
+		padding: 12px 16px;
+	}
+
+	.product-card {
+		display: flex;
+		flex-direction: row;
+		background-color: #fff;
+		border-radius: 12px;
+		padding: 12px;
+		margin-bottom: 12px;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+	}
+
+	.product-img {
+		width: 90px;
+		height: 90px;
+		border-radius: 8px;
+		background-color: #f5f5f5;
+		flex-shrink: 0;
+	}
+
+	.product-info {
+		flex: 1;
+		margin-left: 12px;
+		display: flex;
+		flex-direction: column;
+		justify-content: space-between;
+	}
+
+	.info-top {
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+	}
+
+	.product-name {
+		flex: 1;
+		font-size: 14px;
+		font-weight: 700;
+		color: #333;
+		line-height: 1.4;
+		margin-right: 8px;
+	}
+
+	.status-tag {
+		padding: 2px 8px;
+		border-radius: 4px;
+	}
+
+	.status-tag-pending {
+		background-color: #fff7e6;
+	}
+
+	.status-tag-passed {
+		background-color: #e6f7ff;
+	}
+
+	.status-tag-rejected {
+		background-color: #fff1f0;
+	}
+
+	.status-text {
+		font-size: 11px;
+	}
+
+	.status-text-pending {
+		color: #fa8c16;
+	}
+
+	.status-text-passed {
+		color: #1890ff;
+	}
+
+	.status-text-rejected {
+		color: #ff4d4f;
+	}
+
+	.info-middle {
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		margin: 8px 0;
+	}
+
+	.price-row {
+		display: flex;
+		flex-direction: row;
+		align-items: flex-end;
+	}
+
+	.currency {
+		font-size: 12px;
+		color: #ff4d4f;
+		font-weight: 700;
+	}
+
+	.price {
+		font-size: 16px;
+		color: #ff4d4f;
+		font-weight: 700;
+	}
+
+	.stock-row {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.stock-label {
+		font-size: 12px;
+		color: #999;
+	}
+
+	.stock-value {
+		font-size: 12px;
+		color: #333;
+		margin-left: 4px;
+	}
+
+	.info-bottom {
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.time-text {
+		font-size: 12px;
+		color: #999;
+	}
+
+	.action-btns {
+		display: flex;
+		flex-direction: row;
+	}
+
+	.action-btn {
+		padding: 4px 12px;
+		border: 1px solid #0066CC;
+		border-radius: 14px;
+		margin-left: 8px;
+	}
+
+	.action-btn-reject {
+		border-color: #ff4d4f;
+	}
+
+	.action-btn-text {
+		font-size: 12px;
+		color: #0066CC;
+	}
+
+	.action-btn-text-reject {
+		color: #ff4d4f;
+	}
+
+	.empty-state {
+		padding: 80px 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
+
+	.empty-icon {
+		font-size: 48px;
+		margin-bottom: 16px;
+	}
+
+	.empty-text {
+		font-size: 14px;
+		color: #999;
+	}
+
+	.load-more {
+		padding: 20px 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.load-more-text {
+		font-size: 12px;
+		color: #999;
+	}
+</style>

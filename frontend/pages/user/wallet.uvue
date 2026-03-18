@@ -1,0 +1,720 @@
+<template>
+	<view class="page">
+		<!-- 顶部蓝色背景区域 -->
+		<view class="header-bg">
+			<view class="status-bar"></view>
+			<!-- 导航栏 -->
+			<view class="nav-bar">
+				<view class="nav-back" @click="goBack">
+					<text class="back-arrow">‹</text>
+				</view>
+				<text class="nav-title">我的钱包</text>
+				<view class="nav-action" @click="showHelp">
+					<text class="nav-action-text">说明</text>
+				</view>
+			</view>
+
+			<!-- 余额展示 -->
+			<view class="balance-box">
+				<view class="balance-header">
+					<text class="balance-label">账户余额(元)</text>
+					<view class="eye-btn" @click="toggleEye">
+						<text class="eye-text">{{ showBalance ? '隐藏' : '显示' }}</text>
+					</view>
+				</view>
+				<view class="balance-amount">
+					<text class="amount-symbol">¥</text>
+					<text class="amount-num">{{ showBalance ? formatMoney(walletInfo.balance) : '****' }}</text>
+				</view>
+				<view class="balance-actions">
+					<view class="action-btn-primary" @click="handleRecharge">
+						<text class="action-btn-primary-text">充值</text>
+					</view>
+					<view class="action-btn-outline" @click="handleWithdraw">
+						<text class="action-btn-outline-text">提现</text>
+					</view>
+				</view>
+			</view>
+		</view>
+
+		<!-- 主内容区 -->
+		<scroll-view class="main-scroll" scroll-y="true" :show-scrollbar="false" @scrolltolower="loadMore">
+			<!-- 资产统计 -->
+			<view class="stats-card">
+				<view class="stats-item">
+					<text class="stats-num">{{ formatMoney(walletInfo.frozenAmount) }}</text>
+					<text class="stats-name">冻结金额</text>
+				</view>
+				<view class="stats-divider"></view>
+				<view class="stats-item">
+					<text class="stats-num stats-num-green">{{ formatMoney(walletInfo.totalRecharge) }}</text>
+					<text class="stats-name">累计充值</text>
+				</view>
+				<view class="stats-divider"></view>
+				<view class="stats-item">
+					<text class="stats-num stats-num-orange">{{ formatMoney(walletInfo.totalConsume) }}</text>
+					<text class="stats-name">累计消费</text>
+				</view>
+			</view>
+
+			<!-- 交易记录 -->
+			<view class="record-card">
+				<view class="record-header">
+					<text class="record-title">交易记录</text>
+					<view class="filter-tabs">
+						<text class="filter-tab" :class="{ 'filter-tab-active': currentFilter == 'all' }" @click="changeFilter('all')">全部</text>
+						<text class="filter-tab" :class="{ 'filter-tab-active': currentFilter == 'in' }" @click="changeFilter('in')">收入</text>
+						<text class="filter-tab" :class="{ 'filter-tab-active': currentFilter == 'out' }" @click="changeFilter('out')">支出</text>
+					</view>
+				</view>
+
+				<!-- 加载中 -->
+				<view class="loading-box" v-if="isLoading && records.length == 0">
+					<text class="loading-text">加载中...</text>
+				</view>
+
+				<view class="record-list" v-else>
+					<view class="record-item" v-for="(item, index) in records" :key="index">
+						<view class="item-icon" :class="getIconClass(item.type)">
+							<text class="icon-text">{{ getIcon(item.type) }}</text>
+						</view>
+						<view class="item-info">
+							<text class="item-title">{{ item.typeDesc }}</text>
+							<text class="item-desc" v-if="item.description">{{ item.description }}</text>
+							<text class="item-time">{{ formatTime(item.createTime) }}</text>
+						</view>
+						<text class="item-amount" :class="{ 'item-amount-income': item.amount > 0 }">{{ item.amount > 0 ? '+' : '' }}{{ formatMoney(item.amount) }}</text>
+					</view>
+				</view>
+
+				<view class="list-footer" v-if="records.length > 0">
+					<text class="footer-text" v-if="isLoading">加载中...</text>
+					<text class="footer-text" v-else-if="!hasMore">— 没有更多了 —</text>
+				</view>
+
+				<view class="empty-box" v-if="!isLoading && records.length == 0">
+					<text class="empty-icon">📝</text>
+					<text class="empty-text">暂无记录</text>
+				</view>
+			</view>
+		</scroll-view>
+
+		<!-- 充值弹窗 -->
+		<view class="modal-mask" v-if="showRechargeModal" @click="closeRechargeModal">
+			<view class="modal-content" @click.stop="">
+				<text class="modal-title">充值金额</text>
+				<view class="amount-options">
+					<view class="amount-option" :class="{ 'amount-option-active': selectedAmount == 50 }" @click="selectAmount(50)">
+						<text class="option-text">50元</text>
+					</view>
+					<view class="amount-option" :class="{ 'amount-option-active': selectedAmount == 100 }" @click="selectAmount(100)">
+						<text class="option-text">100元</text>
+					</view>
+					<view class="amount-option" :class="{ 'amount-option-active': selectedAmount == 200 }" @click="selectAmount(200)">
+						<text class="option-text">200元</text>
+					</view>
+					<view class="amount-option" :class="{ 'amount-option-active': selectedAmount == 500 }" @click="selectAmount(500)">
+						<text class="option-text">500元</text>
+					</view>
+				</view>
+				<view class="custom-input-box">
+					<text class="input-label">自定义金额</text>
+					<input class="custom-input" type="digit" placeholder="请输入金额" v-model="customAmount" @blur="onCustomInput" />
+				</view>
+				<view class="modal-actions">
+					<view class="modal-btn modal-btn-cancel" @click="closeRechargeModal">
+						<text class="btn-text">取消</text>
+					</view>
+					<view class="modal-btn modal-btn-confirm" @click="confirmRecharge">
+						<text class="btn-text-white">确认充值</text>
+					</view>
+				</view>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script lang="uts">
+import { getWallet, rechargeWallet, getTransactions, type WalletVO, type TransactionVO } from '@/api/wallet'
+
+export default {
+	data() {
+		return {
+			isLoading: false,
+			showBalance: true,
+			currentFilter: 'all',
+			walletInfo: {
+				id: 0,
+				userId: 0,
+				balance: 0,
+				frozenAmount: 0,
+				totalRecharge: 0,
+				totalConsume: 0
+			} as WalletVO,
+			records: [] as TransactionVO[],
+			pageNum: 1,
+			pageSize: 10,
+			hasMore: true,
+			showRechargeModal: false,
+			selectedAmount: 100,
+			customAmount: ''
+		}
+	},
+	onLoad() {
+		this.loadWalletInfo()
+		this.loadTransactions()
+	},
+	onShow() {
+		this.loadWalletInfo()
+	},
+	methods: {
+		loadWalletInfo() {
+			getWallet().then((res) => {
+				const data = res.data as UTSJSONObject
+				this.walletInfo = {
+					id: (data.getNumber('id') ?? 0).toInt(),
+					userId: (data.getNumber('userId') ?? 0).toInt(),
+					balance: data.getNumber('balance') ?? 0,
+					frozenAmount: data.getNumber('frozenAmount') ?? 0,
+					totalRecharge: data.getNumber('totalRecharge') ?? 0,
+					totalConsume: data.getNumber('totalConsume') ?? 0
+				} as WalletVO
+			}).catch((err) => {
+				console.error('获取钱包信息失败:', err)
+			})
+		},
+		loadTransactions() {
+			if (this.isLoading) return
+			this.isLoading = true
+			let typeParam : string | null = null
+			if (this.currentFilter == 'in') {
+				typeParam = 'RECHARGE'
+			} else if (this.currentFilter == 'out') {
+				typeParam = 'PAYMENT'
+			}
+			getTransactions({
+				type: typeParam,
+				startDate: null,
+				endDate: null,
+				pageNum: this.pageNum,
+				pageSize: this.pageSize
+			}).then((res) => {
+				const data = res.data as UTSJSONObject
+				const recordsArr = data.getArray('records')
+				const total = (data.getNumber('total') ?? 0).toInt()
+				if (recordsArr != null) {
+					const newRecords : TransactionVO[] = []
+					for (let i = 0; i < recordsArr.length; i++) {
+						const item = recordsArr[i] as UTSJSONObject
+						newRecords.push({
+							id: (item.getNumber('id') ?? 0).toInt(),
+							transactionNo: item.getString('transactionNo') ?? '',
+							type: item.getString('type') ?? '',
+							typeDesc: item.getString('typeDesc') ?? '',
+							amount: item.getNumber('amount') ?? 0,
+							balanceAfter: item.getNumber('balanceAfter') ?? 0,
+							relatedOrderNo: item.getString('relatedOrderNo'),
+							description: item.getString('description') ?? '',
+							createTime: item.getString('createTime') ?? ''
+						} as TransactionVO)
+					}
+					if (this.pageNum == 1) {
+						this.records = newRecords
+					} else {
+						this.records = this.records.concat(newRecords)
+					}
+					this.hasMore = this.records.length < total
+				}
+				this.isLoading = false
+			}).catch((err) => {
+				console.error('获取交易记录失败:', err)
+				this.isLoading = false
+			})
+		},
+		loadMore() {
+			if (!this.hasMore || this.isLoading) return
+			this.pageNum++
+			this.loadTransactions()
+		},
+		changeFilter(filter : string) {
+			if (this.currentFilter == filter) return
+			this.currentFilter = filter
+			this.pageNum = 1
+			this.records = [] as TransactionVO[]
+			this.hasMore = true
+			this.loadTransactions()
+		},
+		formatMoney(num : number) : string {
+			return Math.abs(num).toFixed(2)
+		},
+		formatTime(timeStr : string) : string {
+			if (timeStr.length >= 16) {
+				return timeStr.substring(5, 16)
+			}
+			return timeStr
+		},
+		goBack() {
+			uni.navigateBack()
+		},
+		toggleEye() {
+			this.showBalance = !this.showBalance
+		},
+		showHelp() {
+			uni.showModal({
+				title: '余额说明',
+				content: '账户余额可用于支付订单。充值金额不可提现，退款金额可原路返回。',
+				showCancel: false
+			})
+		},
+		handleRecharge() {
+			this.showRechargeModal = true
+			this.selectedAmount = 100
+			this.customAmount = ''
+		},
+		closeRechargeModal() {
+			this.showRechargeModal = false
+		},
+		selectAmount(amount : number) {
+			this.selectedAmount = amount
+			this.customAmount = ''
+		},
+		onCustomInput() {
+			if (this.customAmount != '') {
+				this.selectedAmount = 0
+			}
+		},
+		confirmRecharge() {
+			let amount = this.selectedAmount
+			if (this.customAmount != '') {
+				amount = parseFloat(this.customAmount)
+				if (isNaN(amount) || amount <= 0) {
+					uni.showToast({ title: '请输入有效金额', icon: 'none' })
+					return
+				}
+			}
+			if (amount <= 0) {
+				uni.showToast({ title: '请选择充值金额', icon: 'none' })
+				return
+			}
+			uni.showLoading({ title: '充值中...' })
+			rechargeWallet(amount).then((_res) => {
+				uni.hideLoading()
+				uni.showToast({ title: '充值成功', icon: 'success' })
+				this.closeRechargeModal()
+				this.loadWalletInfo()
+				this.pageNum = 1
+				this.records = [] as TransactionVO[]
+				this.loadTransactions()
+			}).catch((err) => {
+				uni.hideLoading()
+				console.error('充值失败:', err)
+				uni.showToast({ title: '充值失败', icon: 'none' })
+			})
+		},
+		handleWithdraw() {
+			uni.showToast({ title: '提现功能暂未开放', icon: 'none' })
+		},
+		getIcon(type : string) : string {
+			if (type == 'RECHARGE' || type == 'ADMIN_RECHARGE') return '💰'
+			if (type == 'PAYMENT') return '🛒'
+			if (type == 'REFUND') return '↩️'
+			return '📝'
+		},
+		getIconClass(type : string) : string {
+			if (type == 'RECHARGE' || type == 'ADMIN_RECHARGE') return 'item-icon-recharge'
+			if (type == 'PAYMENT') return 'item-icon-pay'
+			if (type == 'REFUND') return 'item-icon-refund'
+			return ''
+		}
+	}
+}
+</script>
+
+<style lang="scss" scoped>
+.page {
+	display: flex;
+	flex-direction: column;
+	background-color: #F5F7FA;
+	height: 100%;
+}
+.header-bg {
+	background-color: #0066CC;
+	padding-bottom: 80rpx;
+}
+.status-bar {
+	height: var(--status-bar-height);
+}
+.nav-bar {
+	height: 88rpx;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 24rpx;
+}
+.nav-back {
+	width: 80rpx;
+	height: 80rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.back-arrow {
+	font-size: 56rpx;
+	color: #FFFFFF;
+	font-weight: 400;
+}
+.nav-title {
+	font-size: 34rpx;
+	font-weight: 700;
+	color: #FFFFFF;
+}
+.nav-action {
+	padding: 8rpx 20rpx;
+	border: 2rpx solid rgba(255, 255, 255, 0.6);
+	border-radius: 24rpx;
+}
+.nav-action-text {
+	font-size: 24rpx;
+	color: #FFFFFF;
+}
+.balance-box {
+	padding: 32rpx;
+}
+.balance-header {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 16rpx;
+}
+.balance-label {
+	font-size: 26rpx;
+	color: rgba(255, 255, 255, 0.8);
+}
+.eye-btn {
+	padding: 8rpx 16rpx;
+}
+.eye-text {
+	font-size: 24rpx;
+	color: rgba(255, 255, 255, 0.8);
+}
+.balance-amount {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-end;
+	margin-bottom: 40rpx;
+}
+.amount-symbol {
+	font-size: 36rpx;
+	color: #FFFFFF;
+	font-weight: 700;
+	margin-right: 8rpx;
+	margin-bottom: 12rpx;
+}
+.amount-num {
+	font-size: 72rpx;
+	color: #FFFFFF;
+	font-weight: 700;
+}
+.balance-actions {
+	display: flex;
+	flex-direction: row;
+}
+.action-btn-primary {
+	flex: 1;
+	height: 80rpx;
+	background-color: #FFFFFF;
+	border-radius: 40rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-right: 24rpx;
+}
+.action-btn-primary-text {
+	font-size: 28rpx;
+	color: #0066CC;
+	font-weight: 700;
+}
+.action-btn-outline {
+	flex: 1;
+	height: 80rpx;
+	background-color: transparent;
+	border: 2rpx solid rgba(255, 255, 255, 0.6);
+	border-radius: 40rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.action-btn-outline-text {
+	font-size: 28rpx;
+	color: #FFFFFF;
+	font-weight: 700;
+}
+.main-scroll {
+	flex: 1;
+	margin-top: -48rpx;
+}
+.stats-card {
+	margin: 0 32rpx 24rpx;
+	background-color: #FFFFFF;
+	border-radius: 24rpx;
+	padding: 32rpx;
+	display: flex;
+	flex-direction: row;
+	justify-content: space-around;
+}
+.stats-item {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+}
+.stats-num {
+	font-size: 36rpx;
+	font-weight: 700;
+	color: #1A1A1A;
+	margin-bottom: 8rpx;
+}
+.stats-num-green {
+	color: #52C41A;
+}
+.stats-num-orange {
+	color: #FF7A45;
+}
+.stats-name {
+	font-size: 24rpx;
+	color: #999999;
+}
+.stats-divider {
+	width: 2rpx;
+	height: 60rpx;
+	background-color: #F0F0F0;
+}
+.record-card {
+	margin: 0 32rpx 32rpx;
+	background-color: #FFFFFF;
+	border-radius: 24rpx;
+	padding: 32rpx;
+}
+.record-header {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 24rpx;
+}
+.record-title {
+	font-size: 32rpx;
+	font-weight: 700;
+	color: #1A1A1A;
+}
+.filter-tabs {
+	display: flex;
+	flex-direction: row;
+	background-color: #F5F7FA;
+	border-radius: 8rpx;
+	padding: 4rpx;
+}
+.filter-tab {
+	font-size: 24rpx;
+	color: #666666;
+	padding: 8rpx 20rpx;
+	border-radius: 6rpx;
+}
+.filter-tab-active {
+	background-color: #0066CC;
+	color: #FFFFFF;
+}
+.loading-box {
+	padding: 60rpx 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.loading-text {
+	font-size: 28rpx;
+	color: #999999;
+}
+.record-list {
+	display: flex;
+	flex-direction: column;
+}
+.record-item {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	padding: 24rpx 0;
+	border-bottom: 1rpx solid #F5F5F5;
+}
+.item-icon {
+	width: 80rpx;
+	height: 80rpx;
+	border-radius: 20rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-right: 24rpx;
+	background-color: #F5F7FA;
+}
+.item-icon-recharge {
+	background-color: #E6F7E6;
+}
+.item-icon-pay {
+	background-color: #FFF2E8;
+}
+.item-icon-refund {
+	background-color: #E8F4FF;
+}
+.icon-text {
+	font-size: 36rpx;
+}
+.item-info {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+}
+.item-title {
+	font-size: 28rpx;
+	color: #1A1A1A;
+	margin-bottom: 4rpx;
+}
+.item-desc {
+	font-size: 24rpx;
+	color: #666666;
+	margin-bottom: 4rpx;
+}
+.item-time {
+	font-size: 24rpx;
+	color: #999999;
+}
+.item-amount {
+	font-size: 32rpx;
+	font-weight: 700;
+	color: #1A1A1A;
+}
+.item-amount-income {
+	color: #52C41A;
+}
+.list-footer {
+	padding: 32rpx 0;
+	display: flex;
+	justify-content: center;
+}
+.footer-text {
+	font-size: 24rpx;
+	color: #CCCCCC;
+}
+.empty-box {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 80rpx 0;
+}
+.empty-icon {
+	font-size: 80rpx;
+	margin-bottom: 16rpx;
+}
+.empty-text {
+	font-size: 28rpx;
+	color: #999999;
+}
+.modal-mask {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: rgba(0, 0, 0, 0.5);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 999;
+}
+.modal-content {
+	width: 600rpx;
+	background-color: #FFFFFF;
+	border-radius: 24rpx;
+	padding: 40rpx;
+}
+.modal-title {
+	font-size: 36rpx;
+	font-weight: 700;
+	color: #1A1A1A;
+	text-align: center;
+	margin-bottom: 40rpx;
+}
+.amount-options {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	margin-bottom: 32rpx;
+}
+.amount-option {
+	width: 48%;
+	height: 80rpx;
+	background-color: #F5F7FA;
+	border-radius: 12rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-bottom: 16rpx;
+	border: 2rpx solid transparent;
+}
+.amount-option-active {
+	background-color: #E6F0FF;
+	border-color: #0066CC;
+}
+.option-text {
+	font-size: 28rpx;
+	color: #333333;
+}
+.option-text-active {
+	color: #0066CC;
+	font-weight: 700;
+}
+.custom-input-box {
+	margin-bottom: 40rpx;
+}
+.input-label {
+	font-size: 26rpx;
+	color: #666666;
+	margin-bottom: 12rpx;
+}
+.custom-input {
+	height: 80rpx;
+	background-color: #F5F7FA;
+	border-radius: 12rpx;
+	padding: 0 24rpx;
+	font-size: 28rpx;
+}
+.modal-actions {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+}
+.modal-btn {
+	flex: 1;
+	height: 88rpx;
+	border-radius: 44rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.modal-btn-cancel {
+	background-color: #F5F7FA;
+	margin-right: 24rpx;
+}
+.modal-btn-confirm {
+	background-color: #0066CC;
+}
+.btn-text {
+	font-size: 30rpx;
+	color: #666666;
+}
+.btn-text-white {
+	font-size: 30rpx;
+	color: #FFFFFF;
+	font-weight: 700;
+}
+</style>

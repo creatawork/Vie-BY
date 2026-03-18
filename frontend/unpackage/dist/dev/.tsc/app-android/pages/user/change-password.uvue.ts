@@ -1,0 +1,269 @@
+
+import { changePassword } from '@/api/user'
+
+type PasswordForm = { __$originalPosition?: UTSSourceMapPosition<"PasswordForm", "pages/user/change-password.uvue", 109, 6>;
+	oldPassword : string
+	newPassword : string
+	confirmPassword : string
+}
+
+type PasswordErrors = { __$originalPosition?: UTSSourceMapPosition<"PasswordErrors", "pages/user/change-password.uvue", 115, 6>;
+	oldPassword : string
+	newPassword : string
+	confirmPassword : string
+}
+
+const __sfc__ = defineComponent({
+	data() {
+		return {
+			form: {
+				oldPassword: '',
+				newPassword: '',
+				confirmPassword: ''
+			} as PasswordForm,
+			errors: {
+				oldPassword: '',
+				newPassword: '',
+				confirmPassword: ''
+			} as PasswordErrors,
+			showOldPassword: false,
+			showNewPassword: false,
+			showConfirmPassword: false,
+			isLoading: false
+		}
+	},
+	computed: {
+		passwordStrength() : string {
+			const pwd = this.form.newPassword
+			if (pwd == '') return ''
+
+			let strength = 0
+			if (pwd.length >= 6) strength++
+			if (pwd.length >= 8) strength++
+			if (/[a-z]/.test(pwd) && /[A-Z]/.test(pwd)) strength++
+			if (/\d/.test(pwd)) strength++
+			if (/[^a-zA-Z\d]/.test(pwd)) strength++
+
+			if (strength <= 2) return 'strength-fill-weak'
+			if (strength <= 3) return 'strength-fill-medium'
+			return 'strength-fill-strong'
+		},
+		strengthWidth() : string {
+			const strength = this.passwordStrength
+			if (strength === 'strength-fill-weak') return '33%'
+			if (strength === 'strength-fill-medium') return '66%'
+			if (strength === 'strength-fill-strong') return '100%'
+			return '0%'
+		},
+		strengthText() : string {
+			const strength = this.passwordStrength
+			if (strength === 'strength-fill-weak') return '弱'
+			if (strength === 'strength-fill-medium') return '中'
+			if (strength === 'strength-fill-strong') return '强'
+			return ''
+		}
+	},
+	methods: {
+		validateOldPassword() {
+			const password = this.form.oldPassword
+			if (password == '') {
+				this.errors.oldPassword = '请输入当前密码'
+			} else if (password.length < 6) {
+				this.errors.oldPassword = '密码长度不正确'
+			} else {
+				this.errors.oldPassword = ''
+			}
+		},
+		validateNewPassword() {
+			const password = this.form.newPassword
+			if (password == '') {
+				this.errors.newPassword = '请输入新密码'
+			} else if (password.length < 6) {
+				this.errors.newPassword = '密码至少6个字符'
+			} else if (password.length > 20) {
+				this.errors.newPassword = '密码最多20个字符'
+			} else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+				this.errors.newPassword = '密码需包含大小写字母和数字'
+			} else {
+				this.errors.newPassword = ''
+			}
+		},
+		validateConfirmPassword() {
+			const confirmPassword = this.form.confirmPassword
+			if (confirmPassword == '') {
+				this.errors.confirmPassword = '请确认新密码'
+			} else if (confirmPassword !== this.form.newPassword) {
+				this.errors.confirmPassword = '两次输入的密码不一致'
+			} else {
+				this.errors.confirmPassword = ''
+			}
+		},
+		handleConfirm() {
+			this.validateOldPassword()
+			this.validateNewPassword()
+			this.validateConfirmPassword()
+
+			// Check if there are any errors
+			const hasErrors = this.errors.oldPassword != '' || this.errors.newPassword != '' || this.errors.confirmPassword != ''
+			if (hasErrors) {
+				return
+			}
+
+			this.isLoading = true
+			changePassword(this.form.oldPassword, this.form.newPassword, this.form.confirmPassword).then((result) => {
+				if (result.code === 200) {
+					uni.showToast({
+						title: '密码修改成功，请重新登录',
+						icon: 'success'
+					})
+					setTimeout(() => {
+						uni.removeStorageSync('auth_token')
+						uni.removeStorageSync('user_info')
+						uni.navigateTo({
+							url: '/pages/login/login'
+						})
+					}, 1000)
+				} else {
+					const msg = result.message != '' ? result.message : '密码修改失败'
+					uni.showToast({
+						title: msg,
+						icon: 'error'
+					})
+				}
+				this.isLoading = false
+			}).catch((error) => {
+				console.error('修改密码失败:', error, " at pages/user/change-password.uvue:240")
+				uni.showToast({
+					title: '密码修改失败，请检查网络连接',
+					icon: 'error'
+				})
+				this.isLoading = false
+			})
+		},
+		handleCancel() {
+			uni.navigateBack()
+		},
+		handleBack() {
+			uni.navigateBack()
+		}
+	}
+})
+
+export default __sfc__
+function GenPagesUserChangePasswordRender(this: InstanceType<typeof __sfc__>): any | null {
+const _ctx = this
+const _cache = this.$.renderCache
+  return createElementVNode("view", utsMapOf({ class: "password-container" }), [
+    createElementVNode("view", utsMapOf({ class: "header" }), [
+      createElementVNode("text", utsMapOf({
+        class: "back-icon",
+        onClick: _ctx.handleBack
+      }), "‹", 8 /* PROPS */, ["onClick"]),
+      createElementVNode("text", utsMapOf({ class: "header-title" }), "修改密码")
+    ]),
+    createElementVNode("scroll-view", utsMapOf({
+      class: "content",
+      "scroll-y": "true"
+    }), [
+      createElementVNode("view", utsMapOf({ class: "form-section" }), [
+        createElementVNode("view", utsMapOf({ class: "form-group" }), [
+          createElementVNode("text", utsMapOf({ class: "form-label" }), "当前密码"),
+          createElementVNode("view", utsMapOf({ class: "password-input-wrapper" }), [
+            createElementVNode("input", utsMapOf({
+              modelValue: _ctx.form.oldPassword,
+              onInput: ($event: InputEvent) => {(_ctx.form.oldPassword) = $event.detail.value},
+              type: _ctx.showOldPassword ? 'text' : 'password',
+              placeholder: "请输入当前密码",
+              class: "form-input",
+              onBlur: _ctx.validateOldPassword
+            }), null, 40 /* PROPS, NEED_HYDRATION */, ["modelValue", "onInput", "type", "onBlur"]),
+            createElementVNode("text", utsMapOf({
+              class: "toggle-password",
+              onClick: () => {_ctx.showOldPassword = !_ctx.showOldPassword}
+            }), toDisplayString(_ctx.showOldPassword ? '隐藏' : '显示'), 9 /* TEXT, PROPS */, ["onClick"])
+          ]),
+          isTrue(_ctx.errors.oldPassword)
+            ? createElementVNode("text", utsMapOf({
+                key: 0,
+                class: "error-text"
+              }), toDisplayString(_ctx.errors.oldPassword), 1 /* TEXT */)
+            : createCommentVNode("v-if", true)
+        ]),
+        createElementVNode("view", utsMapOf({ class: "form-group" }), [
+          createElementVNode("text", utsMapOf({ class: "form-label" }), "新密码"),
+          createElementVNode("view", utsMapOf({ class: "password-input-wrapper" }), [
+            createElementVNode("input", utsMapOf({
+              modelValue: _ctx.form.newPassword,
+              onInput: ($event: InputEvent) => {(_ctx.form.newPassword) = $event.detail.value},
+              type: _ctx.showNewPassword ? 'text' : 'password',
+              placeholder: "请输入新密码",
+              class: "form-input",
+              onBlur: _ctx.validateNewPassword
+            }), null, 40 /* PROPS, NEED_HYDRATION */, ["modelValue", "onInput", "type", "onBlur"]),
+            createElementVNode("text", utsMapOf({
+              class: "toggle-password",
+              onClick: () => {_ctx.showNewPassword = !_ctx.showNewPassword}
+            }), toDisplayString(_ctx.showNewPassword ? '隐藏' : '显示'), 9 /* TEXT, PROPS */, ["onClick"])
+          ]),
+          createElementVNode("text", utsMapOf({ class: "form-hint" }), "密码需包含大小写字母、数字，长度6-20位"),
+          createElementVNode("view", utsMapOf({ class: "password-strength" }), [
+            createElementVNode("view", utsMapOf({ class: "strength-bar" }), [
+              createElementVNode("view", utsMapOf({
+                class: normalizeClass(["strength-fill", _ctx.passwordStrength]),
+                style: normalizeStyle(utsMapOf({ width: _ctx.strengthWidth }))
+              }), null, 6 /* CLASS, STYLE */)
+            ]),
+            createElementVNode("text", utsMapOf({ class: "strength-text" }), toDisplayString(_ctx.strengthText), 1 /* TEXT */)
+          ]),
+          isTrue(_ctx.errors.newPassword)
+            ? createElementVNode("text", utsMapOf({
+                key: 0,
+                class: "error-text"
+              }), toDisplayString(_ctx.errors.newPassword), 1 /* TEXT */)
+            : createCommentVNode("v-if", true)
+        ]),
+        createElementVNode("view", utsMapOf({ class: "form-group" }), [
+          createElementVNode("text", utsMapOf({ class: "form-label" }), "确认新密码"),
+          createElementVNode("view", utsMapOf({ class: "password-input-wrapper" }), [
+            createElementVNode("input", utsMapOf({
+              modelValue: _ctx.form.confirmPassword,
+              onInput: ($event: InputEvent) => {(_ctx.form.confirmPassword) = $event.detail.value},
+              type: _ctx.showConfirmPassword ? 'text' : 'password',
+              placeholder: "请再次输入新密码",
+              class: "form-input",
+              onBlur: _ctx.validateConfirmPassword
+            }), null, 40 /* PROPS, NEED_HYDRATION */, ["modelValue", "onInput", "type", "onBlur"]),
+            createElementVNode("text", utsMapOf({
+              class: "toggle-password",
+              onClick: () => {_ctx.showConfirmPassword = !_ctx.showConfirmPassword}
+            }), toDisplayString(_ctx.showConfirmPassword ? '隐藏' : '显示'), 9 /* TEXT, PROPS */, ["onClick"])
+          ]),
+          isTrue(_ctx.errors.confirmPassword)
+            ? createElementVNode("text", utsMapOf({
+                key: 0,
+                class: "error-text"
+              }), toDisplayString(_ctx.errors.confirmPassword), 1 /* TEXT */)
+            : createCommentVNode("v-if", true)
+        ]),
+        createElementVNode("view", utsMapOf({ class: "tips-section" }), [
+          createElementVNode("text", utsMapOf({ class: "tips-title" }), "密码修改提示："),
+          createElementVNode("text", utsMapOf({ class: "tips-item" }), "• 修改密码后需要重新登录"),
+          createElementVNode("text", utsMapOf({ class: "tips-item" }), "• 请勿使用过于简单的密码"),
+          createElementVNode("text", utsMapOf({ class: "tips-item" }), "• 定期修改密码可以提高账户安全")
+        ])
+      ]),
+      createElementVNode("view", utsMapOf({ class: "action-section" }), [
+        createElementVNode("button", utsMapOf({
+          class: "confirm-btn",
+          disabled: _ctx.isLoading,
+          onClick: _ctx.handleConfirm
+        }), toDisplayString(_ctx.isLoading ? '修改中...' : '确认修改'), 9 /* TEXT, PROPS */, ["disabled", "onClick"]),
+        createElementVNode("button", utsMapOf({
+          class: "cancel-btn",
+          onClick: _ctx.handleCancel
+        }), "取消", 8 /* PROPS */, ["onClick"])
+      ])
+    ])
+  ])
+}
+const GenPagesUserChangePasswordStyles = [utsMapOf([["password-container", padStyleMapOf(utsMapOf([["flex", 1], ["backgroundColor", "#f8f8f8"], ["display", "flex"], ["flexDirection", "column"]]))], ["header", padStyleMapOf(utsMapOf([["display", "flex"], ["alignItems", "center"], ["paddingTop", 12], ["paddingRight", 16], ["paddingBottom", 12], ["paddingLeft", 16], ["backgroundImage", "linear-gradient(135deg, #0066CC 0%, #1890FF 100%)"], ["backgroundColor", "rgba(0,0,0,0)"], ["color", "#ffffff"], ["flexShrink", 0], ["position", "relative"]]))], ["back-icon", padStyleMapOf(utsMapOf([["fontSize", 28], ["color", "#ffffff"], ["fontWeight", "400"], ["position", "absolute"], ["left", 16], ["top", "50%"], ["width", 44], ["height", 44], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"], ["zIndex", 10]]))], ["header-title", padStyleMapOf(utsMapOf([["fontSize", 18], ["fontWeight", "700"], ["color", "#ffffff"], ["flex", 1], ["textAlign", "center"]]))], ["content", padStyleMapOf(utsMapOf([["flex", 1], ["paddingTop", 12], ["paddingRight", 0], ["paddingBottom", 12], ["paddingLeft", 0]]))], ["form-section", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["paddingTop", 24], ["paddingRight", 24], ["paddingBottom", 24], ["paddingLeft", 24], ["marginBottom", 8], ["marginLeft", 12], ["marginRight", 12], ["borderTopLeftRadius", 10], ["borderTopRightRadius", 10], ["borderBottomRightRadius", 10], ["borderBottomLeftRadius", 10], ["boxShadow", "0 2px 8px rgba(0, 0, 0, 0.06)"]]))], ["form-group", padStyleMapOf(utsMapOf([["marginBottom", 24]]))], ["form-label", padStyleMapOf(utsMapOf([["fontSize", 14], ["fontWeight", "400"], ["color", "#333333"], ["display", "flex"], ["marginBottom", 8]]))], ["password-input-wrapper", padStyleMapOf(utsMapOf([["position", "relative"], ["display", "flex"], ["alignItems", "center"]]))], ["form-input", padStyleMapOf(utsMapOf([["width", "100%"], ["height", 44], ["borderTopWidth", 1], ["borderRightWidth", 1], ["borderBottomWidth", 1], ["borderLeftWidth", 1], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#e0e0e0"], ["borderRightColor", "#e0e0e0"], ["borderBottomColor", "#e0e0e0"], ["borderLeftColor", "#e0e0e0"], ["borderTopLeftRadius", 8], ["borderTopRightRadius", 8], ["borderBottomRightRadius", 8], ["borderBottomLeftRadius", 8], ["paddingTop", 0], ["paddingRight", 12], ["paddingBottom", 0], ["paddingLeft", 12], ["fontSize", 14], ["color", "#333333"], ["backgroundColor", "#ffffff"], ["boxSizing", "border-box"]]))], ["form-input-focused", padStyleMapOf(utsMapOf([["borderTopColor", "#0066CC"], ["borderRightColor", "#0066CC"], ["borderBottomColor", "#0066CC"], ["borderLeftColor", "#0066CC"], ["backgroundColor", "#ffffff"]]))], ["toggle-password", padStyleMapOf(utsMapOf([["position", "absolute"], ["right", 12], ["fontSize", 12], ["color", "#0066CC"], ["fontWeight", "400"]]))], ["form-hint", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"], ["marginTop", 4], ["display", "flex"]]))], ["error-text", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#e74c3c"], ["marginTop", 4], ["display", "flex"]]))], ["password-strength", padStyleMapOf(utsMapOf([["marginTop", 8], ["display", "flex"], ["alignItems", "center"], ["marginRight", 8]]))], ["strength-bar", padStyleMapOf(utsMapOf([["flex", 1], ["height", 4], ["backgroundColor", "#e0e0e0"], ["borderTopLeftRadius", 2], ["borderTopRightRadius", 2], ["borderBottomRightRadius", 2], ["borderBottomLeftRadius", 2], ["overflow", "hidden"]]))], ["strength-fill", padStyleMapOf(utsMapOf([["height", "100%"]]))], ["strength-fill-weak", padStyleMapOf(utsMapOf([["backgroundColor", "#FF7A45"]]))], ["strength-fill-medium", padStyleMapOf(utsMapOf([["backgroundColor", "#FF7A45"]]))], ["strength-fill-strong", padStyleMapOf(utsMapOf([["backgroundColor", "#52C41A"]]))], ["strength-text", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#666666"], ["minWidth", 20]]))], ["tips-section", padStyleMapOf(utsMapOf([["backgroundColor", "#f0f7ff"], ["borderLeftWidth", 3], ["borderLeftStyle", "solid"], ["borderLeftColor", "#0066CC"], ["paddingTop", 12], ["paddingRight", 12], ["paddingBottom", 12], ["paddingLeft", 12], ["borderTopLeftRadius", 6], ["borderTopRightRadius", 6], ["borderBottomRightRadius", 6], ["borderBottomLeftRadius", 6], ["marginTop", 24]]))], ["tips-title", padStyleMapOf(utsMapOf([["fontSize", 13], ["fontWeight", "700"], ["color", "#0066CC"], ["display", "flex"], ["marginBottom", 8]]))], ["tips-item", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#666666"], ["display", "flex"], ["marginBottom", 4], ["lineHeight", 1.5]]))], ["action-section", padStyleMapOf(utsMapOf([["paddingTop", 24], ["paddingRight", 12], ["paddingBottom", 24], ["paddingLeft", 12], ["display", "flex"], ["flexDirection", "column"], ["marginBottom", 12], ["flexShrink", 0]]))], ["confirm-btn", padStyleMapOf(utsMapOf([["width", "100%"], ["height", 48], ["backgroundImage", "linear-gradient(135deg, #0066CC 0%, #1890FF 100%)"], ["backgroundColor", "rgba(0,0,0,0)"], ["borderTopLeftRadius", 8], ["borderTopRightRadius", 8], ["borderBottomRightRadius", 8], ["borderBottomLeftRadius", 8], ["color", "#ffffff"], ["fontSize", 16], ["fontWeight", "700"], ["borderTopWidth", "medium"], ["borderRightWidth", "medium"], ["borderBottomWidth", "medium"], ["borderLeftWidth", "medium"], ["borderTopStyle", "none"], ["borderRightStyle", "none"], ["borderBottomStyle", "none"], ["borderLeftStyle", "none"], ["borderTopColor", "#000000"], ["borderRightColor", "#000000"], ["borderBottomColor", "#000000"], ["borderLeftColor", "#000000"], ["opacity:disabled", 0.6]]))], ["cancel-btn", padStyleMapOf(utsMapOf([["width", "100%"], ["height", 48], ["backgroundColor", "#ffffff"], ["borderTopWidth", 1], ["borderRightWidth", 1], ["borderBottomWidth", 1], ["borderLeftWidth", 1], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#e0e0e0"], ["borderRightColor", "#e0e0e0"], ["borderBottomColor", "#e0e0e0"], ["borderLeftColor", "#e0e0e0"], ["borderTopLeftRadius", 8], ["borderTopRightRadius", 8], ["borderBottomRightRadius", 8], ["borderBottomLeftRadius", 8], ["color", "#666666"], ["fontSize", 16], ["fontWeight", "700"]]))]])]

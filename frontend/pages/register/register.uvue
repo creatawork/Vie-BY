@@ -1,0 +1,603 @@
+<template>
+	<view class="page-container">
+		<!-- Header -->
+		<view class="header">
+			<view class="back-btn" @tap="handleBack">
+				<text class="back-icon">←</text>
+			</view>
+			<text class="title">创建账号</text>
+			<text class="subtitle">填写以下信息完成注册</text>
+		</view>
+
+		<!-- Main Content -->
+		<scroll-view class="main-scroll" scroll-y="true" :show-scrollbar="false">
+			<view class="form-area">
+				<!-- Username -->
+				<view class="input-wrap" :class="{ 'input-wrap-error': errors.username != '' }">
+					<input
+						v-model="form.username"
+						type="text"
+						placeholder="用户名"
+						placeholder-class="placeholder"
+						class="input-field"
+						@blur="validateUsername"
+					/>
+				</view>
+				<text v-if="errors.username != ''" class="error-msg">{{ errors.username }}</text>
+
+				<!-- Email -->
+				<view class="input-wrap" :class="{ 'input-wrap-error': errors.email != '' }">
+					<input
+						v-model="form.email"
+						type="text"
+						placeholder="邮箱地址"
+						placeholder-class="placeholder"
+						class="input-field"
+						@blur="validateEmail"
+					/>
+				</view>
+				<text v-if="errors.email != ''" class="error-msg">{{ errors.email }}</text>
+
+				<!-- Phone -->
+				<view class="input-wrap" :class="{ 'input-wrap-error': errors.phone != '' }">
+					<input
+						v-model="form.phone"
+						type="text"
+						maxlength="11"
+						placeholder="手机号码"
+						placeholder-class="placeholder"
+						class="input-field"
+						@blur="validatePhone"
+					/>
+				</view>
+				<text v-if="errors.phone != ''" class="error-msg">{{ errors.phone }}</text>
+
+				<!-- Password -->
+				<view class="input-wrap" :class="{ 'input-wrap-error': errors.password != '' }">
+					<input
+						v-model="form.password"
+						:type="showPassword ? 'text' : 'password'"
+						placeholder="密码 (至少6位)"
+						placeholder-class="placeholder"
+						class="input-field"
+						@blur="validatePassword"
+					/>
+					<view class="action-btn" @tap="showPassword = !showPassword">
+						<text class="action-text">{{ showPassword ? '隐藏' : '显示' }}</text>
+					</view>
+				</view>
+				<text v-if="errors.password != ''" class="error-msg">{{ errors.password }}</text>
+				
+				<!-- Password Strength -->
+				<view class="strength-row" v-if="form.password != ''">
+					<view class="strength-bars">
+						<view class="bar" :class="{ 'bar-active-weak': strengthLevel >= 1 }"></view>
+						<view class="bar" :class="{ 'bar-active-medium': strengthLevel >= 2 }"></view>
+						<view class="bar" :class="{ 'bar-active-strong': strengthLevel >= 3 }"></view>
+					</view>
+					<text class="strength-label">{{ strengthText }}</text>
+				</view>
+
+				<!-- Confirm Password -->
+				<view class="input-wrap" :class="{ 'input-wrap-error': errors.confirmPassword != '' }">
+					<input
+						v-model="form.confirmPassword"
+						:type="showConfirmPassword ? 'text' : 'password'"
+						placeholder="确认密码"
+						placeholder-class="placeholder"
+						class="input-field"
+						@blur="validateConfirmPassword"
+					/>
+					<view class="action-btn" @tap="showConfirmPassword = !showConfirmPassword">
+						<text class="action-text">{{ showConfirmPassword ? '隐藏' : '显示' }}</text>
+					</view>
+				</view>
+				<text v-if="errors.confirmPassword != ''" class="error-msg">{{ errors.confirmPassword }}</text>
+
+				<!-- Agreement -->
+				<view class="agreement-row">
+					<view
+						class="checkbox"
+						:class="{ 'checkbox-checked': form.agreeTerms }"
+						@tap="form.agreeTerms = !form.agreeTerms"
+					>
+						<text v-if="form.agreeTerms" class="check-mark">✓</text>
+					</view>
+					<view class="agreement-text">
+						<text class="text-gray">我已阅读并同意</text>
+						<text class="text-link" @tap="handleViewTerms">《用户协议》</text>
+						<text class="text-gray">和</text>
+						<text class="text-link" @tap="handleViewPrivacy">《隐私政策》</text>
+					</view>
+				</view>
+				<text v-if="errors.agreement != ''" class="error-msg error-center">{{ errors.agreement }}</text>
+
+				<!-- Submit Button -->
+				<button
+					class="primary-btn"
+					:class="{ 'primary-btn-disabled': isLoading }"
+					:loading="isLoading"
+					@tap="handleRegister"
+					:disabled="isLoading"
+				>
+					{{ isLoading ? '注册中...' : '注 册' }}
+				</button>
+				
+				<!-- Login Link -->
+				<view class="footer-link">
+					<text class="text-gray">已有账号？</text>
+					<view class="link-wrap" @tap.stop="handleLogin">
+						<text class="text-link bold">直接登录</text>
+					</view>
+				</view>
+			</view>
+		</scroll-view>
+	</view>
+</template>
+
+<script lang="uts">
+import { register } from '@/api/user'
+
+type RegisterForm = {
+	username : string
+	email : string
+	phone : string
+	password : string
+	confirmPassword : string
+	agreeTerms : boolean
+}
+
+type RegisterErrors = {
+	username : string
+	email : string
+	phone : string
+	password : string
+	confirmPassword : string
+	agreement : string
+}
+
+export default {
+	data() {
+		return {
+			form: {
+				username: '',
+				email: '',
+				phone: '',
+				password: '',
+				confirmPassword: '',
+				agreeTerms: false
+			} as RegisterForm,
+			errors: {
+				username: '',
+				email: '',
+				phone: '',
+				password: '',
+				confirmPassword: '',
+				agreement: ''
+			} as RegisterErrors,
+			showPassword: false,
+			showConfirmPassword: false,
+			isLoading: false
+		}
+	},
+	computed: {
+		strengthLevel() : number {
+			const pwd = this.form.password
+			if (pwd == '') return 0
+
+			let score = 0
+			if (pwd.length >= 6) score++
+			if (pwd.length >= 8) score++
+			if (/[a-z]/.test(pwd) && /[A-Z]/.test(pwd)) score++
+			if (/[0-9]/.test(pwd)) score++
+			if (/[^a-zA-Z0-9]/.test(pwd)) score++
+
+			if (score <= 2) return 1
+			if (score <= 4) return 2
+			return 3
+		},
+		strengthText() : string {
+			const levels = ['', '弱', '中', '强']
+			return levels[this.strengthLevel]
+		}
+	},
+	methods: {
+		validateUsername() {
+			const username = this.form.username.trim()
+			if (username == '') {
+				this.errors.username = '请输入用户名'
+			} else if (username.length < 3) {
+				this.errors.username = '用户名至少3个字符'
+			} else if (username.length > 20) {
+				this.errors.username = '用户名最多20个字符'
+			} else if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+				this.errors.username = '用户名只能包含字母、数字和下划线'
+			} else {
+				this.errors.username = ''
+			}
+		},
+		validateEmail() {
+			const email = this.form.email.trim()
+			if (email == '') {
+				this.errors.email = '请输入邮箱'
+			} else if (!/^[a-zA-Z0-9_.-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email)) {
+				this.errors.email = '请输入有效的邮箱地址'
+			} else {
+				this.errors.email = ''
+			}
+		},
+		validatePhone() {
+			this.form.phone = this.form.phone.replace(/[^0-9]/g, '').slice(0, 11)
+			const phone = this.form.phone.trim()
+			if (phone == '') {
+				this.errors.phone = '请输入手机号'
+			} else if (!/^1[3-9][0-9]{9}$/.test(phone)) {
+				this.errors.phone = '请输入有效的手机号'
+			} else {
+				this.errors.phone = ''
+			}
+		},
+		validatePassword() {
+			const password = this.form.password.trim()
+			if (password == '') {
+				this.errors.password = '请输入密码'
+			} else if (password.length < 6) {
+				this.errors.password = '密码至少6个字符'
+			} else {
+				this.errors.password = ''
+			}
+			// 更新表单值为去除空格后的值
+			this.form.password = password
+			
+			// 如果确认密码不为空，同时触发确认密码验证
+			if (this.form.confirmPassword != '') {
+				this.validateConfirmPassword()
+			}
+		},
+		validateConfirmPassword() {
+			const confirmPassword = this.form.confirmPassword.trim()
+			const password = this.form.password.trim()
+
+			if (confirmPassword == '') {
+				this.errors.confirmPassword = '请确认密码'
+			} else if (confirmPassword != password) {
+				this.errors.confirmPassword = '两次输入的密码不一致'
+			} else {
+				this.errors.confirmPassword = ''
+			}
+			// 更新表单值为去除空格后的值
+			this.form.confirmPassword = confirmPassword
+			this.form.password = password
+		},
+		validateAgreement() {
+			if (this.form.agreeTerms == false) {
+				this.errors.agreement = '请同意用户协议和隐私政策'
+			} else {
+				this.errors.agreement = ''
+			}
+		},
+		handleRegister() {
+			if (this.isLoading) {
+				return
+			}
+			// 先 trim 所有输入
+			this.form.username = this.form.username.trim()
+			this.form.email = this.form.email.trim()
+			this.form.phone = this.form.phone.trim()
+			this.form.password = this.form.password.trim()
+			this.form.confirmPassword = this.form.confirmPassword.trim()
+			
+			this.validateUsername()
+			this.validateEmail()
+			this.validatePhone()
+			this.validatePassword()
+			this.validateConfirmPassword()
+			this.validateAgreement()
+
+			// Check if there are any errors
+			const hasError = this.errors.username != '' || this.errors.email != '' || this.errors.phone != '' ||
+			    this.errors.password != '' || this.errors.confirmPassword != '' || this.errors.agreement != ''
+			if (hasError) {
+				return
+			}
+
+			this.isLoading = true
+
+			register(
+				this.form.username,
+				this.form.email,
+				this.form.phone,
+				this.form.password,
+				this.form.username, // nickname 使用 username 作为默认值
+				this.form.confirmPassword
+			).then((response) => {
+				this.isLoading = false
+				uni.showToast({
+					title: '注册成功',
+					icon: 'success'
+				})
+
+				setTimeout(() => {
+					uni.navigateTo({
+						url: '/pages/login/login'
+					})
+				}, 500)
+			}).catch((error) => {
+				this.isLoading = false
+				const errMsg = error != null && (error as Error).message != null && (error as Error).message != ''
+					? (error as Error).message
+					: '注册失败，请稍后重试'
+				uni.showToast({
+					title: errMsg,
+					icon: 'none'
+				})
+			})
+		},
+		handleViewTerms() {
+			uni.showToast({
+				title: '用户协议功能开发中',
+				icon: 'none'
+			})
+		},
+		handleViewPrivacy() {
+			uni.showToast({
+				title: '隐私政策功能开发中',
+				icon: 'none'
+			})
+		},
+		handleLogin() {
+			uni.navigateTo({
+				url: '/pages/login/login'
+			})
+		},
+		handleBack() {
+			uni.navigateBack()
+		}
+	}
+}
+</script>
+
+<style lang="scss" scoped>
+.page-container {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	background-color: #ffffff;
+}
+
+/* Header */
+.header {
+	padding: 80rpx 60rpx 40rpx;
+	background-color: #ffffff;
+	z-index: 10;
+}
+
+.back-btn {
+	width: 80rpx;
+	height: 80rpx;
+	display: flex;
+	align-items: center;
+	margin-left: -20rpx;
+	margin-bottom: 20rpx;
+}
+
+.back-icon {
+	font-size: 48rpx;
+	color: #333333;
+	font-weight: normal;
+}
+
+.title {
+	font-size: 56rpx;
+	font-weight: 700;
+	color: #111111;
+	margin-bottom: 16rpx;
+	letter-spacing: 2rpx;
+}
+
+.subtitle {
+	font-size: 28rpx;
+	color: #888888;
+}
+
+/* Main Content */
+.main-scroll {
+	flex: 1;
+	height: 0; /* Important for scroll-view */
+}
+
+.form-area {
+	padding: 0 60rpx 80rpx;
+	display: flex;
+	flex-direction: column;
+}
+
+/* Input Fields */
+.input-wrap {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	background-color: #f7f8fa;
+	height: 110rpx;
+	border-radius: 24rpx;
+	padding: 0 32rpx;
+	margin-top: 32rpx;
+	border: 2rpx solid transparent;
+}
+
+.input-wrap-error {
+	border-color: #ff4d4f;
+	background-color: #fff0f0;
+}
+
+.input-field {
+	flex: 1;
+	height: 100%;
+	font-size: 32rpx;
+	color: #333333;
+	background: transparent;
+}
+
+.placeholder {
+	color: #bbbbbb;
+	font-size: 32rpx;
+}
+
+.action-btn {
+	padding: 0 10rpx;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.action-text {
+	font-size: 28rpx;
+	color: #0066CC;
+	font-weight: bold;
+}
+
+.error-msg {
+	font-size: 24rpx;
+	color: #ff4d4f;
+	margin-top: 12rpx;
+	padding-left: 12rpx;
+}
+
+.error-center {
+	text-align: center;
+	padding-left: 0;
+}
+
+/* Password Strength */
+.strength-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	margin-top: 16rpx;
+	padding: 0 12rpx;
+}
+
+.strength-bars {
+	flex: 1;
+	display: flex;
+	flex-direction: row;
+	height: 8rpx;
+	margin-right: 24rpx;
+}
+
+.bar {
+	flex: 1;
+	background-color: #f0f0f0;
+	border-radius: 4rpx;
+	margin-right: 8rpx;
+}
+
+.bar-active-weak {
+	background-color: #ff4d4f;
+}
+
+.bar-active-medium {
+	background-color: #faad14;
+}
+
+.bar-active-strong {
+	background-color: #52c41a;
+}
+
+.strength-label {
+	font-size: 24rpx;
+	color: #888888;
+	width: 50rpx;
+	text-align: right;
+}
+
+/* Agreement */
+.agreement-row {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-start;
+	margin: 40rpx 0 24rpx;
+}
+
+.checkbox {
+	width: 36rpx;
+	height: 36rpx;
+	border: 3rpx solid #d9d9d9;
+	border-radius: 8rpx;
+	margin-right: 16rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-top: 4rpx;
+}
+
+.checkbox-checked {
+	background-color: #0066CC;
+	border-color: #0066CC;
+}
+
+.check-mark {
+	color: #ffffff;
+	font-size: 24rpx;
+	font-weight: bold;
+}
+
+.agreement-text {
+	flex: 1;
+	line-height: 1.6;
+}
+
+.text-gray {
+	font-size: 26rpx;
+	color: #888888;
+}
+
+.text-link {
+	font-size: 26rpx;
+	color: #0066CC;
+}
+
+.bold {
+	font-weight: bold;
+}
+
+/* Submit Button */
+.primary-btn {
+	width: 100%;
+	height: 110rpx;
+	background-color: #0066CC;
+	color: #ffffff;
+	border-radius: 24rpx;
+	font-size: 34rpx;
+	font-weight: bold;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	box-shadow: 0 16rpx 32rpx rgba(0, 102, 204, 0.2);
+	margin-top: 16rpx;
+}
+
+.primary-btn-disabled {
+	background-color: #a0c6ed;
+	box-shadow: none;
+}
+
+/* Footer Link */
+.footer-link {
+	display: flex;
+	flex-direction: row;
+	justify-content: center;
+	align-items: center;
+	margin-top: 48rpx;
+}
+
+.link-wrap {
+	padding: 40rpx; /* Huge tap target */
+	margin-left: -20rpx; /* Offset the padding visually */
+	z-index: 10;
+}
+</style>
+
+

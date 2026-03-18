@@ -1,0 +1,861 @@
+<template>
+  <view class="page">
+    <!-- 顶部筛选区域 -->
+    <view class="filter-header">
+      <view class="filter-row">
+        <view class="filter-left">
+          <text class="filter-title">库存管理</text>
+        </view>
+        <view class="filter-right">
+          <view class="low-stock-switch" @click="toggleLowStock">
+            <view class="switch-box" :class="{ 'switch-box-active': showLowStock }">
+              <view class="switch-dot" :class="{ 'switch-dot-active': showLowStock }"></view>
+            </view>
+            <text class="switch-label">仅显示低库存</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 库存列表 -->
+    <scroll-view 
+      class="inventory-scroll" 
+      scroll-y="true" 
+      @scrolltolower="loadMore" 
+      @refresherrefresh="onRefresh" 
+      :refresher-enabled="true" 
+      :refresher-triggered="isRefreshing"
+      :show-scrollbar="false"
+    >
+      <!-- 加载中 -->
+      <view v-if="isLoading && inventoryList.length === 0" class="loading-state">
+        <text class="loading-text">加载中...</text>
+      </view>
+      
+      <!-- 库存列表 -->
+      <view v-else class="inventory-list">
+        <view class="inventory-card" v-for="item in inventoryList" :key="item.skuId">
+          <view class="card-header">
+            <image class="product-img" :src="item.mainImage" mode="aspectFill"></image>
+            <view class="product-info">
+              <text class="product-name">{{ item.productName }}</text>
+              <text class="sku-name">规格: {{ item.skuName }}</text>
+            </view>
+          </view>
+          <view class="card-body">
+            <view class="stock-info">
+              <view class="info-item">
+                <text class="info-label">当前库存</text>
+                <text class="info-value" :class="{ 'info-value-low-stock': item.stock < 10 }">{{ item.stock }}</text>
+              </view>
+              <view class="info-item">
+                <text class="info-label">销量</text>
+                <text class="info-value">{{ item.sales }}</text>
+              </view>
+              <view class="info-item">
+                <text class="info-label">价格</text>
+                <text class="info-value info-value-price">¥{{ item.price.toFixed(2) }}</text>
+              </view>
+            </view>
+            <view class="action-area">
+              <view class="adjust-btn" @click="openAdjustModal(item)">
+                <text class="adjust-btn-text">调整库存</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+      
+      <!-- 空状态 -->
+      <view v-if="!isLoading && inventoryList.length === 0" class="empty-state">
+        <text class="empty-icon">📦</text>
+        <text class="empty-text">{{ showLowStock ? '暂无低库存商品' : '暂无库存数据' }}</text>
+      </view>
+      
+      <!-- 加载更多 -->
+      <view v-if="inventoryList.length > 0" class="load-more">
+        <text class="load-more-text">{{ hasMore ? '上拉加载更多' : '没有更多了' }}</text>
+      </view>
+      
+      <!-- 底部占位 -->
+      <view style="height: 20px;"></view>
+    </scroll-view>
+
+    <!-- 库存调整弹窗 -->
+    <view class="modal-mask" v-if="showAdjustModal" @click="closeAdjustModal">
+      <view class="modal-content" @click.stop="">
+        <view class="modal-header">
+          <text class="modal-title">调整库存</text>
+          <view class="modal-close" @click="closeAdjustModal">
+            <text class="close-icon">×</text>
+          </view>
+        </view>
+        
+        <view class="modal-body">
+          <!-- 商品信息 -->
+          <view class="adjust-product-info" v-if="currentItem != null">
+            <text class="adjust-product-name">{{ currentItem!.productName }}</text>
+            <text class="adjust-sku-name">规格: {{ currentItem!.skuName }}</text>
+            <view class="current-stock-row">
+              <text class="current-stock-label">当前库存:</text>
+              <text class="current-stock-value">{{ currentItem!.stock }}</text>
+            </view>
+          </view>
+          
+          <!-- 调整类型选择 -->
+          <view class="adjust-type-section">
+            <text class="section-label">调整类型</text>
+            <view class="type-options">
+              <view class="type-option type-option-first" :class="{ 'type-option-active': adjustType === 'ADD' }" @click="selectAdjustType('ADD')">
+                <text class="type-text" :class="{ 'type-text-active': adjustType === 'ADD' }">增加</text>
+              </view>
+              <view class="type-option" :class="{ 'type-option-active': adjustType === 'REDUCE' }" @click="selectAdjustType('REDUCE')">
+                <text class="type-text" :class="{ 'type-text-active': adjustType === 'REDUCE' }">减少</text>
+              </view>
+              <view class="type-option type-option-last" :class="{ 'type-option-active': adjustType === 'SET' }" @click="selectAdjustType('SET')">
+                <text class="type-text" :class="{ 'type-text-active': adjustType === 'SET' }">设置</text>
+              </view>
+            </view>
+          </view>
+          
+          <!-- 调整数量输入 -->
+          <view class="adjust-quantity-section">
+            <text class="section-label">{{ adjustType === 'SET' ? '设置为' : '调整数量' }}</text>
+            <view class="quantity-input-row">
+              <input 
+                class="quantity-input" 
+                type="number" 
+                v-model="adjustQuantity" 
+                placeholder="请输入数量"
+              />
+            </view>
+          </view>
+          
+          <!-- 调整后预览 -->
+          <view class="preview-section" v-if="currentItem != null && adjustQuantity !== ''">
+            <text class="preview-label">调整后库存:</text>
+            <text class="preview-value" :class="{ 'preview-value-low-stock': getPreviewStock() < 10, 'preview-value-error': getPreviewStock() < 0 }">
+              {{ getPreviewStock() }}
+            </text>
+            <text class="preview-error" v-if="getPreviewStock() < 0">库存不能为负数</text>
+          </view>
+          
+          <!-- 备注输入 -->
+          <view class="remark-section">
+            <text class="section-label">备注（可选）</text>
+            <input class="remark-input" v-model="adjustRemark" placeholder="请输入调整原因" />
+          </view>
+        </view>
+        
+        <view class="modal-footer">
+          <view class="cancel-btn" @click="closeAdjustModal">
+            <text class="cancel-btn-text">取消</text>
+          </view>
+          <view class="confirm-btn" :class="{ 'confirm-btn-disabled': !canSubmit }" @click="submitAdjust">
+            <text class="confirm-btn-text">确认调整</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+
+<script lang="uts">
+import { getInventoryList, adjustInventory, type InventoryQueryParams, type AdjustData } from '@/api/seller'
+
+// 库存项类型定义
+type InventoryItemType = {
+  skuId: number
+  productId: number
+  productName: string
+  mainImage: string
+  skuName: string
+  price: number
+  stock: number
+  sales: number
+}
+
+export default {
+  data() {
+    return {
+      showLowStock: false,
+      isLoading: false,
+      isRefreshing: false,
+      hasMore: true,
+      pageNum: 1,
+      pageSize: 10,
+      inventoryList: [] as InventoryItemType[],
+      
+      // 调整弹窗相关
+      showAdjustModal: false,
+      currentItem: null as InventoryItemType | null,
+      adjustType: 'ADD' as string,  // 'ADD' | 'REDUCE' | 'SET'
+      adjustQuantity: '',
+      adjustRemark: ''
+    }
+  },
+  computed: {
+    canSubmit(): boolean {
+      if (this.adjustQuantity === '') return false
+      const qty = parseInt(this.adjustQuantity)
+      if (isNaN(qty) || qty < 0) return false
+      if (this.getPreviewStock() < 0) return false
+      return true
+    }
+  },
+  onLoad() {
+    this.loadInventory()
+  },
+  methods: {
+    // 加载库存列表
+    loadInventory() {
+      this.isLoading = true
+      const params: InventoryQueryParams = {
+        pageNum: this.pageNum,
+        pageSize: this.pageSize,
+        productId: null,
+        lowStock: this.showLowStock ? true : null
+      }
+      
+      getInventoryList(params).then((res) => {
+        const data = res.data as UTSJSONObject
+        const total = (data.getNumber('total') ?? 0).toInt()
+        const itemList = this.parseInventoryFromData(data)
+        
+        if (this.pageNum === 1) {
+          this.inventoryList = itemList
+        } else {
+          this.inventoryList = this.inventoryList.concat(itemList)
+        }
+        
+        this.hasMore = this.inventoryList.length < total
+        this.isLoading = false
+        this.isRefreshing = false
+      }).catch((err) => {
+        console.error('获取库存列表失败:', err)
+        this.isLoading = false
+        this.isRefreshing = false
+        uni.showToast({ title: '获取库存失败', icon: 'none' })
+      })
+    },
+    
+    // 解析库存数据
+    parseInventoryFromData(data: UTSJSONObject): InventoryItemType[] {
+      const records = data.getArray('records')
+      if (records == null) return [] as InventoryItemType[]
+
+      const itemList: InventoryItemType[] = []
+      for (let i = 0; i < records.length; i++) {
+        const product = records[i] as UTSJSONObject
+        const productId = (product.getNumber('productId') ?? 0).toInt()
+        const productName = product.getString('productName') ?? ''
+        const mainImage = product.getString('mainImage') ?? ''
+
+        const skuList = product.getArray('skuList')
+        if (skuList != null) {
+          for (let j = 0; j < skuList.length; j++) {
+            const sku = skuList[j] as UTSJSONObject
+            itemList.push({
+              skuId: (sku.getNumber('skuId') ?? 0).toInt(),
+              productId: productId,
+              productName: productName,
+              mainImage: mainImage,
+              skuName: sku.getString('skuName') ?? '默认规格',
+              price: sku.getNumber('price') ?? 0,
+              stock: (sku.getNumber('stock') ?? 0).toInt(),
+              sales: (sku.getNumber('salesVolume') ?? 0).toInt()
+            } as InventoryItemType)
+          }
+        }
+      }
+      return itemList
+    },
+    
+    // 切换低库存筛选
+    toggleLowStock() {
+      this.showLowStock = !this.showLowStock
+      this.pageNum = 1
+      this.inventoryList = []
+      this.loadInventory()
+    },
+    
+    // 下拉刷新
+    onRefresh() {
+      this.isRefreshing = true
+      this.pageNum = 1
+      this.loadInventory()
+    },
+    
+    // 加载更多
+    loadMore() {
+      if (!this.hasMore || this.isLoading) return
+      this.pageNum++
+      this.loadInventory()
+    },
+    
+    // 打开调整弹窗
+    openAdjustModal(item: InventoryItemType) {
+      this.currentItem = item
+      this.adjustType = 'ADD'
+      this.adjustQuantity = ''
+      this.adjustRemark = ''
+      this.showAdjustModal = true
+    },
+    
+    // 关闭调整弹窗
+    closeAdjustModal() {
+      this.showAdjustModal = false
+      this.currentItem = null
+    },
+    
+    // 选择调整类型
+    selectAdjustType(type: string) {
+      this.adjustType = type
+    },
+    
+    // 计算预览库存
+    getPreviewStock(): number {
+      if (this.currentItem == null || this.adjustQuantity === '') return 0
+      const qty = parseInt(this.adjustQuantity)
+      if (isNaN(qty)) return this.currentItem!.stock
+      
+      if (this.adjustType === 'ADD') {
+        return this.currentItem!.stock + qty
+      } else if (this.adjustType === 'REDUCE') {
+        return this.currentItem!.stock - qty
+      } else {
+        return qty
+      }
+    },
+    
+    // 提交库存调整
+    submitAdjust() {
+      if (!this.canSubmit || this.currentItem == null) return
+      
+      const qty = parseInt(this.adjustQuantity)
+      const data: AdjustData = {
+        adjustType: this.adjustType,
+        quantity: qty,
+        remark: this.adjustRemark !== '' ? this.adjustRemark : null
+      }
+      
+      uni.showLoading({ title: '调整中...' })
+      
+      adjustInventory(this.currentItem!.skuId, data).then((res) => {
+        uni.hideLoading()
+
+        // 更新本地数据
+        const resData = res.data as UTSJSONObject
+        const newStock = (resData.getNumber('afterStock') ?? this.getPreviewStock()).toInt()
+
+        const index = this.inventoryList.findIndex((item: InventoryItemType): boolean =>
+          item.skuId === this.currentItem!.skuId
+        )
+        if (index !== -1) {
+          this.inventoryList[index].stock = newStock
+        }
+
+        this.closeAdjustModal()
+        uni.showToast({ title: '调整成功', icon: 'success' })
+      }).catch((err) => {
+        uni.hideLoading()
+        console.error('库存调整失败:', err)
+        uni.showToast({ title: '调整失败', icon: 'none' })
+      })
+    }
+  }
+}
+</script>
+
+
+<style lang="scss" scoped>
+.page {
+  background-color: #f7f8fa;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+/* 顶部筛选区域 */
+.filter-header {
+  background-color: #fff;
+  padding-top: var(--status-bar-height);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  z-index: 100;
+}
+
+.filter-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+}
+
+.filter-left {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.filter-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #333;
+}
+
+.filter-right {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.low-stock-switch {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.switch-box {
+  width: 40px;
+  height: 22px;
+  background-color: #ddd;
+  border-radius: 11px;
+  position: relative;
+}
+
+.switch-box-active {
+  background-color: #0066CC;
+}
+
+.switch-dot {
+  width: 18px;
+  height: 18px;
+  background-color: #fff;
+  border-radius: 9px;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+}
+
+.switch-dot-active {
+  left: 20px;
+}
+
+.switch-label {
+  font-size: 13px;
+  color: #666;
+  margin-left: 8px;
+}
+
+/* 库存列表 */
+.inventory-scroll {
+  flex: 1;
+  width: 100%;
+}
+
+.loading-state {
+  padding: 60px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-text {
+  font-size: 14px;
+  color: #999;
+}
+
+.inventory-list {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 库存卡片 */
+.inventory-card {
+  background-color: #fff;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.card-header {
+  display: flex;
+  flex-direction: row;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.product-img {
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  background-color: #f5f5f5;
+  flex-shrink: 0;
+}
+
+.product-info {
+  flex: 1;
+  margin-left: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.product-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #333;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sku-name {
+  font-size: 12px;
+  color: #999;
+  margin-top: 4px;
+}
+
+.card-body {
+  padding-top: 12px;
+}
+
+.stock-info {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+}
+
+.info-label {
+  font-size: 12px;
+  color: #999;
+}
+
+.info-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #333;
+  margin-top: 4px;
+}
+
+.info-value-low-stock {
+  color: #ff4d4f;
+}
+
+.info-value-price {
+  color: #ff4d4f;
+  font-size: 14px;
+}
+
+.action-area {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.adjust-btn {
+  padding: 6px 16px;
+  background-color: #0066CC;
+  border-radius: 16px;
+}
+
+.adjust-btn-text {
+  font-size: 13px;
+  color: #fff;
+}
+
+/* 空状态 */
+.empty-state {
+  padding: 80px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  color: #ccc;
+}
+
+.empty-text {
+  font-size: 14px;
+  color: #999;
+}
+
+/* 加载更多 */
+.load-more {
+  padding: 20px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.load-more-text {
+  font-size: 12px;
+  color: #999;
+}
+
+/* 弹窗样式 */
+.modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  width: 85%;
+  max-width: 340px;
+  background-color: #fff;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #333;
+}
+
+.modal-close {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-icon {
+  font-size: 20px;
+  color: #999;
+}
+
+.modal-body {
+  padding: 16px;
+}
+
+.adjust-product-info {
+  background-color: #f7f8fa;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.adjust-product-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #333;
+}
+
+.adjust-sku-name {
+  font-size: 12px;
+  color: #999;
+  margin-top: 4px;
+}
+
+.current-stock-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.current-stock-label {
+  font-size: 13px;
+  color: #666;
+}
+
+.current-stock-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0066CC;
+  margin-left: 8px;
+}
+
+.section-label {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.adjust-type-section {
+  margin-bottom: 16px;
+}
+
+.type-options {
+  display: flex;
+  flex-direction: row;
+}
+
+.type-option {
+  flex: 1;
+  padding: 10px 0;
+  border: 1px solid #ddd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.type-option-first {
+  border-radius: 8px 0 0 8px;
+}
+
+.type-option-last {
+  border-radius: 0 8px 8px 0;
+}
+
+.type-option-active {
+  background-color: #0066CC;
+  border-color: #0066CC;
+}
+
+.type-text {
+  font-size: 14px;
+  color: #333;
+}
+
+.type-text-active {
+  color: #fff;
+}
+
+.adjust-quantity-section {
+  margin-bottom: 16px;
+}
+
+.quantity-input-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.quantity-input {
+  flex: 1;
+  height: 44px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 16px;
+  color: #333;
+}
+
+.preview-section {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 12px;
+  background-color: #f7f8fa;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.preview-label {
+  font-size: 13px;
+  color: #666;
+}
+
+.preview-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #52c41a;
+  margin-left: 8px;
+}
+
+.preview-value-low-stock {
+  color: #faad14;
+}
+
+.preview-value-error {
+  color: #ff4d4f;
+}
+
+.preview-error {
+  width: 100%;
+  font-size: 12px;
+  color: #ff4d4f;
+  margin-top: 4px;
+}
+
+.remark-section {
+  margin-bottom: 8px;
+}
+
+.remark-input {
+  height: 44px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 14px;
+  color: #333;
+}
+
+.modal-footer {
+  display: flex;
+  flex-direction: row;
+  padding: 12px 16px 16px;
+  border-top: 1px solid #f5f5f5;
+}
+
+.cancel-btn {
+  flex: 1;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #ddd;
+  border-radius: 22px;
+  margin-right: 12px;
+}
+
+.cancel-btn-text {
+  font-size: 15px;
+  color: #666;
+}
+
+.confirm-btn {
+  flex: 1;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #0066CC;
+  border-radius: 22px;
+}
+
+.confirm-btn-disabled {
+  background-color: #ccc;
+}
+
+.confirm-btn-text {
+  font-size: 15px;
+  color: #fff;
+}
+</style>

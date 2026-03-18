@@ -1,0 +1,125 @@
+
+import { payOrder } from '@/api/order'
+import { getWallet } from '@/api/wallet'
+
+const __sfc__ = defineComponent({
+	data() {
+		return {
+			orderId: 0,
+			orderNo: '',
+			payAmount: 0,
+			walletBalance: 0,
+			isPaying: false
+		}
+	},
+	onLoad(options : any) {
+		const opts = options as UTSJSONObject
+		this.orderId = parseInt(opts.getString('orderId') ?? '0')
+		this.orderNo = opts.getString('orderNo') ?? ''
+		this.payAmount = parseFloat(opts.getString('amount') ?? '0')
+	},
+	onShow() {
+		this.loadWalletBalance()
+	},
+	methods: {
+		goBack() {
+			uni.navigateBack()
+		},
+		loadWalletBalance() {
+			getWallet().then((res) => {
+				const data = res.data as UTSJSONObject
+				this.walletBalance = data.getNumber('balance') ?? 0
+			}).catch((_err) => {
+				this.walletBalance = 0
+			})
+		},
+		goRecharge() {
+			uni.navigateTo({ url: '/pages/user/wallet' })
+		},
+		handlePay() {
+			if (this.isPaying) return
+			if (this.walletBalance < this.payAmount) {
+				uni.showToast({ title: '余额不足，请先充值', icon: 'none' })
+				return
+			}
+			
+			this.isPaying = true
+			uni.showLoading({ title: '支付中...' })
+			
+			payOrder(this.orderId).then((_res) => {
+				uni.hideLoading()
+				this.isPaying = false
+				uni.showToast({ title: '支付成功', icon: 'success' })
+				setTimeout(() => {
+					uni.navigateBack({ delta: 1 })
+				}, 1500)
+			}).catch((err) => {
+				uni.hideLoading()
+				this.isPaying = false
+				console.error('支付失败:', err, " at pages/order/pay.uvue:110")
+				uni.showToast({ title: '支付失败，请重试', icon: 'none' })
+			})
+		}
+	}
+})
+
+export default __sfc__
+function GenPagesOrderPayRender(this: InstanceType<typeof __sfc__>): any | null {
+const _ctx = this
+const _cache = this.$.renderCache
+  return createElementVNode("view", utsMapOf({ class: "pay-page" }), [
+    createElementVNode("view", utsMapOf({ class: "nav-bar" }), [
+      createElementVNode("view", utsMapOf({
+        class: "nav-back",
+        onClick: _ctx.goBack
+      }), [
+        createElementVNode("text", utsMapOf({ class: "back-icon" }), "‹")
+      ], 8 /* PROPS */, ["onClick"]),
+      createElementVNode("text", utsMapOf({ class: "nav-title" }), "订单支付"),
+      createElementVNode("view", utsMapOf({ class: "nav-placeholder" }))
+    ]),
+    createElementVNode("view", utsMapOf({ class: "amount-section" }), [
+      createElementVNode("text", utsMapOf({ class: "amount-label" }), "支付金额"),
+      createElementVNode("view", utsMapOf({ class: "amount-row" }), [
+        createElementVNode("text", utsMapOf({ class: "amount-symbol" }), "¥"),
+        createElementVNode("text", utsMapOf({ class: "amount-value" }), toDisplayString(_ctx.payAmount.toFixed(2)), 1 /* TEXT */)
+      ]),
+      createElementVNode("text", utsMapOf({ class: "order-no" }), "订单号：" + toDisplayString(_ctx.orderNo), 1 /* TEXT */)
+    ]),
+    createElementVNode("view", utsMapOf({ class: "wallet-section" }), [
+      createElementVNode("view", utsMapOf({ class: "wallet-card" }), [
+        createElementVNode("view", utsMapOf({ class: "wallet-icon" }), [
+          createElementVNode("text", utsMapOf({ class: "icon-text" }), "💰")
+        ]),
+        createElementVNode("view", utsMapOf({ class: "wallet-info" }), [
+          createElementVNode("text", utsMapOf({ class: "wallet-title" }), "账户余额支付"),
+          createElementVNode("text", utsMapOf({ class: "wallet-balance" }), "可用余额：¥" + toDisplayString(_ctx.walletBalance.toFixed(2)), 1 /* TEXT */)
+        ])
+      ]),
+      _ctx.walletBalance < _ctx.payAmount
+        ? createElementVNode("view", utsMapOf({
+            key: 0,
+            class: "balance-tip"
+          }), [
+            createElementVNode("text", utsMapOf({ class: "tip-icon" }), "⚠️"),
+            createElementVNode("text", utsMapOf({ class: "tip-text" }), "余额不足，请先充值"),
+            createElementVNode("view", utsMapOf({
+              class: "recharge-btn",
+              onClick: _ctx.goRecharge
+            }), [
+              createElementVNode("text", utsMapOf({ class: "recharge-text" }), "去充值")
+            ], 8 /* PROPS */, ["onClick"])
+          ])
+        : createCommentVNode("v-if", true)
+    ]),
+    createElementVNode("view", utsMapOf({ class: "bottom-bar" }), [
+      createElementVNode("view", utsMapOf({
+        class: normalizeClass(["pay-btn", utsMapOf({ 'pay-btn-disabled': _ctx.isPaying || _ctx.walletBalance < _ctx.payAmount })]),
+        onClick: _ctx.handlePay
+      }), [
+        createElementVNode("text", utsMapOf({ class: "pay-btn-text" }), toDisplayString(_ctx.isPaying ? '支付中...' : '确认支付 ¥' + _ctx.payAmount.toFixed(2)), 1 /* TEXT */)
+      ], 10 /* CLASS, PROPS */, ["onClick"])
+    ])
+  ])
+}
+const GenPagesOrderPayStyles = [utsMapOf([["pay-page", padStyleMapOf(utsMapOf([["backgroundColor", "#f5f5f5"], ["minHeight", "1500rpx"], ["display", "flex"], ["flexDirection", "column"]]))], ["nav-bar", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["justifyContent", "space-between"], ["height", "88rpx"], ["backgroundColor", "#ffffff"], ["paddingTop", CSS_VAR_STATUS_BAR_HEIGHT], ["paddingRight", "20rpx"], ["paddingBottom", 0], ["paddingLeft", "20rpx"]]))], ["nav-back", padStyleMapOf(utsMapOf([["width", "80rpx"], ["height", "80rpx"], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["back-icon", padStyleMapOf(utsMapOf([["fontSize", "48rpx"], ["color", "#333333"]]))], ["nav-title", padStyleMapOf(utsMapOf([["fontSize", "32rpx"], ["fontWeight", "700"], ["color", "#333333"]]))], ["nav-placeholder", padStyleMapOf(utsMapOf([["width", "80rpx"]]))], ["amount-section", padStyleMapOf(utsMapOf([["backgroundColor", "#0066CC"], ["paddingTop", "60rpx"], ["paddingRight", "40rpx"], ["paddingBottom", "60rpx"], ["paddingLeft", "40rpx"], ["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"]]))], ["amount-label", padStyleMapOf(utsMapOf([["fontSize", "28rpx"], ["color", "rgba(255,255,255,0.8)"], ["marginBottom", "20rpx"]]))], ["amount-row", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "flex-end"], ["marginBottom", "20rpx"]]))], ["amount-symbol", padStyleMapOf(utsMapOf([["fontSize", "36rpx"], ["color", "#ffffff"], ["fontWeight", "700"], ["marginRight", "8rpx"], ["marginBottom", "8rpx"]]))], ["amount-value", padStyleMapOf(utsMapOf([["fontSize", "72rpx"], ["color", "#ffffff"], ["fontWeight", "700"]]))], ["order-no", padStyleMapOf(utsMapOf([["fontSize", "24rpx"], ["color", "rgba(255,255,255,0.7)"]]))], ["wallet-section", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["marginTop", "20rpx"], ["marginRight", "20rpx"], ["marginBottom", "20rpx"], ["marginLeft", "20rpx"], ["borderTopLeftRadius", "16rpx"], ["borderTopRightRadius", "16rpx"], ["borderBottomRightRadius", "16rpx"], ["borderBottomLeftRadius", "16rpx"], ["paddingTop", "30rpx"], ["paddingRight", "30rpx"], ["paddingBottom", "30rpx"], ["paddingLeft", "30rpx"]]))], ["wallet-card", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"]]))], ["wallet-icon", padStyleMapOf(utsMapOf([["width", "80rpx"], ["height", "80rpx"], ["borderTopLeftRadius", "16rpx"], ["borderTopRightRadius", "16rpx"], ["borderBottomRightRadius", "16rpx"], ["borderBottomLeftRadius", "16rpx"], ["backgroundColor", "#FFF3E0"], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"], ["marginRight", "24rpx"]]))], ["icon-text", padStyleMapOf(utsMapOf([["fontSize", "40rpx"]]))], ["wallet-info", padStyleMapOf(utsMapOf([["flex", 1], ["display", "flex"], ["flexDirection", "column"]]))], ["wallet-title", padStyleMapOf(utsMapOf([["fontSize", "30rpx"], ["color", "#333333"], ["fontWeight", "bold"], ["marginBottom", "8rpx"]]))], ["wallet-balance", padStyleMapOf(utsMapOf([["fontSize", "26rpx"], ["color", "#666666"]]))], ["balance-tip", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["marginTop", "24rpx"], ["paddingTop", "20rpx"], ["paddingRight", "20rpx"], ["paddingBottom", "20rpx"], ["paddingLeft", "20rpx"], ["backgroundColor", "#FFF8E1"], ["borderTopLeftRadius", "12rpx"], ["borderTopRightRadius", "12rpx"], ["borderBottomRightRadius", "12rpx"], ["borderBottomLeftRadius", "12rpx"]]))], ["tip-icon", padStyleMapOf(utsMapOf([["fontSize", "28rpx"], ["marginRight", "12rpx"]]))], ["tip-text", padStyleMapOf(utsMapOf([["flex", 1], ["fontSize", "26rpx"], ["color", "#F57C00"]]))], ["recharge-btn", padStyleMapOf(utsMapOf([["paddingTop", "12rpx"], ["paddingRight", "24rpx"], ["paddingBottom", "12rpx"], ["paddingLeft", "24rpx"], ["backgroundColor", "#0066CC"], ["borderTopLeftRadius", "24rpx"], ["borderTopRightRadius", "24rpx"], ["borderBottomRightRadius", "24rpx"], ["borderBottomLeftRadius", "24rpx"]]))], ["recharge-text", padStyleMapOf(utsMapOf([["fontSize", "24rpx"], ["color", "#ffffff"]]))], ["bottom-bar", padStyleMapOf(utsMapOf([["position", "fixed"], ["bottom", 0], ["left", 0], ["right", 0], ["paddingTop", "20rpx"], ["paddingRight", "30rpx"], ["paddingBottom", "40rpx"], ["paddingLeft", "30rpx"], ["backgroundColor", "#ffffff"], ["boxShadow", "0 -2rpx 10rpx rgba(0, 0, 0, 0.05)"]]))], ["pay-btn", padStyleMapOf(utsMapOf([["height", "88rpx"], ["backgroundColor", "#0066CC"], ["borderTopLeftRadius", "44rpx"], ["borderTopRightRadius", "44rpx"], ["borderBottomRightRadius", "44rpx"], ["borderBottomLeftRadius", "44rpx"], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["pay-btn-disabled", padStyleMapOf(utsMapOf([["backgroundColor", "#cccccc"]]))], ["pay-btn-text", padStyleMapOf(utsMapOf([["fontSize", "32rpx"], ["color", "#ffffff"], ["fontWeight", "bold"]]))]])]

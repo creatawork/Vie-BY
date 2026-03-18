@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.vie.db.mapper.ProductReviewMapper">
+
+    <!-- 评价结果映射 -->
+    <resultMap id="ReviewResultMap" type="com.vie.db.entity.ProductReview">
+        <id column="id" property="id"/>
+        <result column="product_id" property="productId"/>
+        <result column="user_id" property="userId"/>
+        <result column="order_id" property="orderId"/>
+        <result column="rating" property="rating"/>
+        <result column="content" property="content"/>
+        <result column="images" property="images"/>
+        <result column="reply_content" property="replyContent"/>
+        <result column="reply_time" property="replyTime"/>
+        <result column="status" property="status"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="is_deleted" property="isDeleted"/>
+        <!-- 关联用户信息 -->
+        <association property="user" javaType="com.vie.db.entity.User">
+            <id column="u_id" property="id"/>
+            <result column="u_username" property="username"/>
+            <result column="u_nickname" property="nickname"/>
+            <result column="u_avatar" property="avatar"/>
+        </association>
+    </resultMap>
+
+    <!-- 分页查询评价 -->
+    <select id="selectReviewPage" resultMap="ReviewResultMap">
+        SELECT
+            pr.*,
+            u.id AS u_id,
+            u.username AS u_username,
+            u.nickname AS u_nickname,
+            u.avatar AS u_avatar
+        FROM product_review pr
+        LEFT JOIN user u ON pr.user_id = u.id AND u.is_deleted = 0
+        WHERE pr.product_id = #{productId}
+        AND pr.status = 1
+        AND pr.is_deleted = 0
+        <if test="rating != null">
+            AND pr.rating = #{rating}
+        </if>
+        ORDER BY pr.create_time DESC
+    </select>
+
+    <!-- 分页查询用户评价列表（带商品信息） -->
+    <select id="selectUserReviewPage" resultMap="ReviewResultMap">
+        SELECT
+            pr.*,
+            u.id AS u_id,
+            u.username AS u_username,
+            u.nickname AS u_nickname,
+            u.avatar AS u_avatar
+        FROM product_review pr
+        LEFT JOIN user u ON pr.user_id = u.id AND u.is_deleted = 0
+        WHERE pr.user_id = #{userId}
+        AND pr.is_deleted = 0
+        ORDER BY pr.create_time DESC
+    </select>
+
+    <!-- 管理员分页查询评价列表 -->
+    <select id="selectAdminReviewPage" resultMap="ReviewResultMap">
+        SELECT
+            pr.*,
+            u.id AS u_id,
+            u.username AS u_username,
+            u.nickname AS u_nickname,
+            u.avatar AS u_avatar
+        FROM product_review pr
+        LEFT JOIN user u ON pr.user_id = u.id AND u.is_deleted = 0
+        WHERE pr.is_deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (
+                pr.content LIKE CONCAT('%', #{keyword}, '%')
+                OR u.username LIKE CONCAT('%', #{keyword}, '%')
+                OR u.nickname LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+        <if test="status != null">
+            AND pr.status = #{status}
+        </if>
+        <if test="rating != null">
+            AND pr.rating = #{rating}
+        </if>
+        <if test="productId != null">
+            AND pr.product_id = #{productId}
+        </if>
+        <if test="userId != null">
+            AND pr.user_id = #{userId}
+        </if>
+        ORDER BY pr.create_time DESC
+    </select>
+
+    <!-- 管理员查询评价详情 -->
+    <select id="selectAdminReviewById" resultMap="ReviewResultMap">
+        SELECT
+            pr.*,
+            u.id AS u_id,
+            u.username AS u_username,
+            u.nickname AS u_nickname,
+            u.avatar AS u_avatar
+        FROM product_review pr
+        LEFT JOIN user u ON pr.user_id = u.id AND u.is_deleted = 0
+        WHERE pr.id = #{reviewId}
+        AND pr.is_deleted = 0
+        LIMIT 1
+    </select>
+
+</mapper>

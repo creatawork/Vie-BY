@@ -1,0 +1,389 @@
+<template>
+	<view class="page">
+		<!-- 搜索栏 -->
+		<view class="search-bar">
+			<view class="search-wrapper">
+				<input 
+					v-model="searchKeyword" 
+					class="search-input" 
+					placeholder="搜索用户名/手机号"
+					@confirm="handleSearch"
+				/>
+			</view>
+		</view>
+
+		<!-- 用户列表 -->
+		<scroll-view class="user-list" scroll-y @scrolltolower="loadMore">
+			<view v-for="user in userList" :key="user.id" class="user-card">
+				<!-- 左侧：头像和基本信息 -->
+				<view class="card-left">
+					<image 
+						:src="user.avatar !== '' ? user.avatar : '/static/default-avatar.png'" 
+						class="user-avatar"
+						mode="aspectFill"
+					></image>
+					<view class="user-info">
+						<view class="info-top">
+							<text class="user-name">{{ user.username }}</text>
+							<view class="status-badge" :class="user.status === 1 ? 'badge-active' : 'badge-disabled'">
+								<text class="badge-text" :class="user.status === 1 ? 'badge-active-text' : 'badge-disabled-text'">{{ user.status === 1 ? '正常' : '禁用' }}</text>
+							</view>
+						</view>
+						<text class="user-phone">{{ user.phone !== '' ? user.phone : '未绑定手机' }}</text>
+					</view>
+				</view>
+				
+				<!-- 右侧：操作按钮 -->
+				<view class="card-right">
+					<view class="btn btn-detail" @click="viewUserDetail(user.id)">
+						<text class="btn-text btn-detail-text">详情</text>
+					</view>
+					<view 
+						class="btn" 
+						:class="user.status === 1 ? 'btn-danger' : 'btn-success'"
+						@click="toggleUserStatus(user)"
+					>
+						<text class="btn-text" :class="user.status === 1 ? 'btn-danger-text' : 'btn-success-text'">{{ user.status === 1 ? '禁用' : '启用' }}</text>
+					</view>
+				</view>
+			</view>
+
+			<!-- 加载提示 -->
+			<view class="load-tip">
+				<text v-if="loading" class="tip-text">加载中...</text>
+				<text v-else-if="noMore" class="tip-text">没有更多了</text>
+			</view>
+		</scroll-view>
+	</view>
+</template>
+
+<script lang="uts">
+	import { getAdminUsers, getAdminUserDetail, updateUserStatus } from '@/api/admin'
+	import type { ResponseDataType } from '@/utils/request'
+
+	type UserType = {
+		id: number
+		username: string
+		nickname: string
+		phone: string
+		email: string
+		avatar: string
+		gender: number
+		status: number
+		createTime: string
+		updateTime: string
+	}
+
+	export default {
+		data() {
+			return {
+				searchKeyword: '',
+				userList: [] as UserType[],
+				pageNum: 1,
+				pageSize: 10,
+				loading: false,
+				noMore: false
+			}
+		},
+		onLoad() {
+			this.loadUserList()
+		},
+		methods: {
+			loadUserList() {
+				if (this.loading || this.noMore) return
+				
+				this.loading = true
+				getAdminUsers(this.pageNum, this.pageSize, this.searchKeyword).then((res : ResponseDataType) => {
+					this.loading = false
+					if (res.code === 200 && res.data != null) {
+						const data = res.data as UTSJSONObject
+						const records = data.getArray('records')
+						
+						if (records != null && records.length > 0) {
+							const newUsers = [] as UserType[]
+							for (let i = 0; i < records.length; i++) {
+								const item = records[i] as UTSJSONObject
+								newUsers.push({
+									id: (item.getNumber('id') ?? 0).toInt(),
+									username: item.getString('username') ?? '',
+									nickname: item.getString('nickname') ?? '',
+									phone: item.getString('phone') ?? '',
+									email: item.getString('email') ?? '',
+									avatar: item.getString('avatar') ?? '',
+									gender: (item.getNumber('gender') ?? 0).toInt(),
+									status: (item.getNumber('status') ?? 1).toInt(),
+									createTime: item.getString('createTime') ?? '',
+									updateTime: item.getString('updateTime') ?? ''
+								} as UserType)
+							}
+							
+							if (this.pageNum === 1) {
+								this.userList = newUsers
+							} else {
+								this.userList = this.userList.concat(newUsers)
+							}
+							
+							if (newUsers.length < this.pageSize) {
+								this.noMore = true
+							}
+						} else {
+							if (this.pageNum === 1) {
+								this.userList = []
+							}
+							this.noMore = true
+						}
+					}
+				}).catch((err : Any | null) => {
+					this.loading = false
+					const error = err as Error
+					uni.showToast({
+						title: error.message,
+						icon: 'none'
+					})
+				})
+			},
+			handleSearch() {
+				this.pageNum = 1
+				this.noMore = false
+				this.userList = []
+				this.loadUserList()
+			},
+			loadMore() {
+				if (!this.loading && !this.noMore) {
+					this.pageNum++
+					this.loadUserList()
+				}
+			},
+			toggleUserStatus(user : UserType) {
+				const newStatus = user.status === 1 ? 0 : 1
+				const statusText = newStatus === 1 ? '启用' : '禁用'
+				
+				uni.showModal({
+					title: '确认操作',
+					content: `确定要${statusText}用户"${user.username}"吗？`,
+					success: (res) => {
+						if (res.confirm) {
+							updateUserStatus(user.id, newStatus).then((response : ResponseDataType) => {
+								if (response.code === 200) {
+									uni.showToast({
+										title: `${statusText}成功`,
+										icon: 'success'
+									})
+									user.status = newStatus
+								} else {
+									uni.showToast({
+										title: response.message,
+										icon: 'none'
+									})
+								}
+							}).catch((err : Any | null) => {
+								const error = err as Error
+								uni.showToast({
+									title: error.message,
+									icon: 'none'
+								})
+							})
+						}
+					}
+				})
+			},
+			viewUserDetail(userId : number) {
+				getAdminUserDetail(userId).then((res : ResponseDataType) => {
+					if (res.code === 200 && res.data != null) {
+						const user = res.data as UTSJSONObject
+						const genderMap = ['未知', '男', '女']
+						const gender = (user.getNumber('gender') ?? 0).toInt()
+						const genderText = genderMap[gender]
+						
+						const content = `用户名：${user.getString('username') ?? ''}\n昵称：${user.getString('nickname') ?? '未设置'}\n手机：${user.getString('phone') ?? '未绑定'}\n邮箱：${user.getString('email') ?? '未绑定'}\n性别：${genderText}\n注册时间：${user.getString('createTime') ?? ''}`
+						
+						uni.showModal({
+							title: '用户详情',
+							content: content,
+							showCancel: false
+						})
+					}
+				}).catch((err : Any | null) => {
+					const error = err as Error
+					uni.showToast({
+						title: error.message,
+						icon: 'none'
+					})
+				})
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	.page {
+		background-color: #f5f5f5;
+		display: flex;
+		flex-direction: column;
+	}
+
+	/* 搜索栏 */
+	.search-bar {
+		background-color: #ffffff;
+		padding: 12px 15px;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+	}
+
+	.search-wrapper {
+		background-color: #f7f7f7;
+		border-radius: 20px;
+		padding: 0 15px;
+		height: 40px;
+		display: flex;
+		align-items: center;
+	}
+
+	.search-input {
+		flex: 1;
+		font-size: 14px;
+		color: #333;
+	}
+
+	/* 用户列表 */
+	.user-list {
+		flex: 1;
+		padding: 12px 15px;
+	}
+
+	.user-card {
+		background-color: #ffffff;
+		border-radius: 10px;
+		margin-bottom: 10px;
+		padding: 12px;
+		box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	/* 左侧区域 */
+	.card-left {
+		flex: 1;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.user-avatar {
+		width: 45px;
+		height: 45px;
+		border-radius: 22px;
+		margin-right: 12px;
+		background-color: #e0e0e0;
+	}
+
+	.user-info {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.info-top {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		margin-bottom: 4px;
+	}
+
+	.user-name {
+		font-size: 16px;
+		font-weight: bold;
+		color: #333;
+		margin-right: 8px;
+	}
+
+	.status-badge {
+		padding: 2px 8px;
+		border-radius: 8px;
+	}
+
+	.badge-active {
+		background-color: #e6f7ff;
+	}
+
+	.badge-disabled {
+		background-color: #fff1f0;
+	}
+
+	.badge-text {
+		font-size: 11px;
+	}
+
+	.badge-active-text {
+		color: #1890ff;
+	}
+
+	.badge-disabled-text {
+		color: #ff4d4f;
+	}
+
+	.user-phone {
+		font-size: 13px;
+		color: #999;
+	}
+
+	/* 右侧按钮区域 */
+	.card-right {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		margin-left: 10px;
+	}
+
+	.btn {
+		width: 55px;
+		height: 32px;
+		border-radius: 16px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin-left: 8px;
+	}
+
+	.btn-detail {
+		background-color: #f5f5f5;
+	}
+
+	.btn-detail-text {
+		color: #666;
+	}
+
+	.btn-success {
+		background-color: #52c41a;
+	}
+
+	.btn-success-text {
+		color: #ffffff;
+	}
+
+	.btn-danger {
+		background-color: #ff4d4f;
+	}
+
+	.btn-danger-text {
+		color: #ffffff;
+	}
+
+	.btn-text {
+		font-size: 13px;
+		font-weight: bold;
+	}
+
+	/* 加载提示 */
+	.load-tip {
+		padding: 20px 0;
+		text-align: center;
+	}
+
+	.tip-text {
+		font-size: 13px;
+		color: #999;
+	}
+</style>
+

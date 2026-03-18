@@ -1,0 +1,741 @@
+<template>
+  <view class="page">
+    <!-- 顶部状态筛选栏 -->
+    <view class="filter-header">
+      <scroll-view class="status-scroll" scroll-x="true" :show-scrollbar="false">
+        <view class="status-tabs">
+          <view class="tab-item" :class="{ active: currentStatus === null }" @click="switchStatus(null)">
+            <text class="tab-text" :class="{ 'tab-text--active': currentStatus === null }">全部</text>
+            <view class="active-line" v-if="currentStatus === null"></view>
+          </view>
+          <view class="tab-item" :class="{ active: currentStatus === 0 }" @click="switchStatus(0)">
+            <text class="tab-text" :class="{ 'tab-text--active': currentStatus === 0 }">待审核</text>
+            <view class="active-line" v-if="currentStatus === 0"></view>
+          </view>
+          <view class="tab-item" :class="{ active: currentStatus === 1 }" @click="switchStatus(1)">
+            <text class="tab-text" :class="{ 'tab-text--active': currentStatus === 1 }">已上架</text>
+            <view class="active-line" v-if="currentStatus === 1"></view>
+          </view>
+          <view class="tab-item" :class="{ active: currentStatus === 2 }" @click="switchStatus(2)">
+            <text class="tab-text" :class="{ 'tab-text--active': currentStatus === 2 }">已下架</text>
+            <view class="active-line" v-if="currentStatus === 2"></view>
+          </view>
+          <view class="tab-item" :class="{ active: currentStatus === 3 }" @click="switchStatus(3)">
+            <text class="tab-text" :class="{ 'tab-text--active': currentStatus === 3 }">审核不通过</text>
+            <view class="active-line" v-if="currentStatus === 3"></view>
+          </view>
+        </view>
+      </scroll-view>
+      
+      <!-- 搜索框 -->
+      <view class="search-bar">
+        <text class="search-icon">🔍</text>
+        <input class="search-input" v-model="searchKeyword" placeholder="搜索商品名称" @confirm="handleSearch" />
+        <view class="search-btn" @click="handleSearch" v-if="searchKeyword !== ''">
+          <text class="search-btn-text">搜索</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 商品列表 -->
+    <scroll-view 
+      class="product-scroll" 
+      scroll-y="true" 
+      @scrolltolower="loadMore" 
+      @refresherrefresh="onRefresh" 
+      :refresher-enabled="true" 
+      :refresher-triggered="isRefreshing"
+      :show-scrollbar="false"
+    >
+      <!-- 加载中 -->
+      <view v-if="isLoading && products.length === 0" class="loading-state">
+        <text class="loading-text">加载中...</text>
+      </view>
+      
+      <!-- 商品列表 -->
+      <view v-else class="product-list">
+        <view class="product-card" v-for="product in products" :key="product.id" @click="goToEdit(product.id)">
+          <image class="product-img" :src="product.mainImage" mode="aspectFill"></image>
+          <view class="product-info">
+            <view class="info-top">
+              <text class="product-name">{{ product.productName }}</text>
+              <view class="status-tag" :class="getStatusClass(product.status)">
+                <text class="status-text" :class="getStatusTextClass(product.status)">{{ getStatusText(product.status) }}</text>
+              </view>
+            </view>
+            <view class="info-middle">
+              <view class="price-row">
+                <text class="currency">¥</text>
+                <text class="price">{{ product.currentPrice.toFixed(2) }}</text>
+                <text class="original-price" v-if="product.originalPrice != null && (product.originalPrice as number) > 0">¥{{ (product.originalPrice as number).toFixed(2) }}</text>
+              </view>
+              <view class="stock-row">
+                <text class="stock-label">库存:</text>
+                <text class="stock-value" :class="{ 'stock-value-low': product.totalStock < 10 }">{{ product.totalStock }}</text>
+              </view>
+            </view>
+            <view class="info-bottom">
+              <text class="sales-text">销量: {{ product.sales }}</text>
+              <view class="action-btns">
+                <view class="action-btn" v-if="product.status === 1" @click.stop="handleOffShelf(product)">
+                  <text class="action-btn-text">下架</text>
+                </view>
+                <view class="action-btn" v-if="product.status === 2 || product.status === 3" @click.stop="handleOnShelf(product)">
+                  <text class="action-btn-text">申请上架</text>
+                </view>
+                <view class="action-btn" @click.stop="goToReviews(product)">
+                  <text class="action-btn-text">评价</text>
+                </view>
+                <view class="action-btn action-btn-delete" @click.stop="handleDelete(product)">
+                  <text class="action-btn-text action-btn-text-delete">删除</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+      
+      <!-- 空状态 -->
+      <view v-if="!isLoading && products.length === 0" class="empty-state">
+        <text class="empty-icon">📦</text>
+        <text class="empty-text">暂无商品</text>
+        <view class="empty-btn" @click="goToPublish">
+          <text class="empty-btn-text">去发布商品</text>
+        </view>
+      </view>
+      
+      <!-- 加载更多 -->
+      <view v-if="products.length > 0" class="load-more">
+        <text class="load-more-text">{{ hasMore ? '上拉加载更多' : '没有更多了' }}</text>
+      </view>
+      
+      <!-- 底部占位 -->
+      <view style="height: 80px;"></view>
+    </scroll-view>
+
+    <!-- 底部发布按钮 -->
+    <view class="publish-btn-wrapper">
+      <view class="publish-btn" @click="goToPublish">
+        <text class="publish-icon">+</text>
+        <text class="publish-text">发布商品</text>
+      </view>
+    </view>
+  </view>
+</template>
+
+
+<script lang="uts">
+import { getSellerProducts, updateProductStatus, deleteProduct, type ProductQueryParams } from '@/api/seller'
+
+// 商品类型定义
+type SellerProductType = {
+  id: number
+  productName: string
+  mainImage: string
+  currentPrice: number
+  originalPrice: number | null
+  totalStock: number
+  sales: number
+  status: number  // 0-待审核 1-已上架 2-已下架 3-审核不通过
+  categoryId: number
+  categoryName: string | null
+}
+
+export default {
+  data() {
+    return {
+      currentStatus: null as number | null,
+      searchKeyword: '',
+      isLoading: false,
+      isRefreshing: false,
+      hasMore: true,
+      pageNum: 1,
+      pageSize: 10,
+      products: [] as SellerProductType[]
+    }
+  },
+  onLoad() {
+    this.loadProducts()
+  },
+  onShow() {
+    // 页面显示时刷新数据
+    if (this.products.length > 0) {
+      this.pageNum = 1
+      this.loadProducts()
+    }
+  },
+  methods: {
+    // 加载商品列表
+    loadProducts() {
+      this.isLoading = true
+      const params: ProductQueryParams = {
+        pageNum: this.pageNum,
+        pageSize: this.pageSize,
+        status: this.currentStatus,
+        keyword: this.searchKeyword !== '' ? this.searchKeyword : null,
+        categoryId: null
+      }
+      
+      getSellerProducts(params).then((res) => {
+        const data = res.data as UTSJSONObject
+        const total = (data.getNumber('total') ?? 0).toInt()
+        const productList = this.parseProductsFromData(data)
+        
+        if (this.pageNum === 1) {
+          this.products = productList
+        } else {
+          this.products = this.products.concat(productList)
+        }
+        
+        this.hasMore = this.products.length < total
+        this.isLoading = false
+        this.isRefreshing = false
+      }).catch((err) => {
+        console.error('获取商品列表失败:', err)
+        this.isLoading = false
+        this.isRefreshing = false
+        uni.showToast({ title: '获取商品失败', icon: 'none' })
+      })
+    },
+    
+    // 解析商品数据
+    parseProductsFromData(data: UTSJSONObject): SellerProductType[] {
+      const records = data.getArray('records')
+      if (records == null) return [] as SellerProductType[]
+      
+      const productList: SellerProductType[] = []
+      for (let i = 0; i < records.length; i++) {
+        const item = records[i] as UTSJSONObject
+        productList.push({
+          id: (item.getNumber('id') ?? 0).toInt(),
+          productName: item.getString('productName') ?? '',
+          mainImage: item.getString('mainImage') ?? '',
+          currentPrice: item.getNumber('currentPrice') ?? 0,
+          originalPrice: item.getNumber('originalPrice'),
+          totalStock: (item.getNumber('stock') ?? item.getNumber('totalStock') ?? 0).toInt(),
+          sales: (item.getNumber('sales') ?? item.getNumber('salesVolume') ?? 0).toInt(),
+          status: (item.getNumber('status') ?? 0).toInt(),
+          categoryId: (item.getNumber('categoryId') ?? 0).toInt(),
+          categoryName: item.getString('categoryName')
+        } as SellerProductType)
+      }
+      return productList
+    },
+    
+    // 切换状态筛选
+    switchStatus(status: number | null) {
+      if (this.currentStatus === status) return
+      this.currentStatus = status
+      this.pageNum = 1
+      this.products = []
+      this.loadProducts()
+    },
+    
+    // 搜索
+    handleSearch() {
+      this.pageNum = 1
+      this.products = []
+      this.loadProducts()
+    },
+    
+    // 下拉刷新
+    onRefresh() {
+      this.isRefreshing = true
+      this.pageNum = 1
+      this.loadProducts()
+    },
+    
+    // 加载更多
+    loadMore() {
+      if (!this.hasMore || this.isLoading) return
+      this.pageNum++
+      this.loadProducts()
+    },
+    
+    // 获取状态样式类
+    getStatusClass(status: number): string {
+      const classMap = new Map<number, string>([
+        [0, 'status-tag-pending'],
+        [1, 'status-tag-online'],
+        [2, 'status-tag-offline'],
+        [3, 'status-tag-rejected']
+      ])
+      return classMap.get(status) ?? ''
+    },
+    
+    getStatusTextClass(status: number): string {
+      const classMap = new Map<number, string>([
+        [0, 'status-text-pending'],
+        [1, 'status-text-online'],
+        [2, 'status-text-offline'],
+        [3, 'status-text-rejected']
+      ])
+      return classMap.get(status) ?? ''
+    },
+    
+    // 获取状态文本
+    getStatusText(status: number): string {
+      const textMap = new Map<number, string>([
+        [0, '待审核'],
+        [1, '已上架'],
+        [2, '已下架'],
+        [3, '审核不通过']
+      ])
+      return textMap.get(status) ?? '未知'
+    },
+    
+    // 跳转到编辑页面
+    goToEdit(productId: number) {
+      uni.navigateTo({ url: `/pages/seller/product-edit?id=${productId}` })
+    },
+    
+    // 跳转到发布页面
+    goToPublish() {
+      uni.navigateTo({ url: '/pages/seller/product-edit' })
+    },
+
+    // 跳转到评价管理
+    goToReviews(product: SellerProductType) {
+      uni.navigateTo({
+        url: `/pages/seller/reviews?productId=${product.id}&productName=${product.productName}`
+      })
+    },
+    
+    // 下架商品
+    handleOffShelf(product: SellerProductType) {
+      uni.showModal({
+        title: '提示',
+        content: '确定要下架该商品吗？',
+        success: (res) => {
+          if (res.confirm) {
+            updateProductStatus(product.id, 2).then(() => {
+              product.status = 2
+              uni.showToast({ title: '下架成功', icon: 'success' })
+            }).catch((err) => {
+              console.error('下架失败:', err)
+              uni.showToast({ title: '下架失败', icon: 'none' })
+            })
+          }
+        }
+      })
+    },
+    
+    // 申请上架商品
+    handleOnShelf(product: SellerProductType) {
+      uni.showModal({
+        title: '提示',
+        content: '确定要重新申请上架该商品吗？提交后需经管理员审核。',
+        success: (res) => {
+          if (res.confirm) {
+            uni.showLoading({ title: '提交中...' })
+            updateProductStatus(product.id, 1).then(() => {
+              uni.hideLoading()
+              product.status = 0 // 变为待审核状态
+              uni.showToast({ title: '申请已提交', icon: 'success' })
+            }).catch((err) => {
+              uni.hideLoading()
+              console.error('申请上架失败:', err)
+              uni.showToast({ title: '提交失败', icon: 'none' })
+            })
+          }
+        }
+      })
+    },
+    
+    // 删除商品
+    handleDelete(product: SellerProductType) {
+      uni.showModal({
+        title: '提示',
+        content: '确定要删除该商品吗？删除后不可恢复。',
+        success: (res) => {
+          if (res.confirm) {
+            deleteProduct(product.id).then(() => {
+              const index = this.products.findIndex((p: SellerProductType): boolean => p.id === product.id)
+              if (index !== -1) {
+                this.products.splice(index, 1)
+              }
+              uni.showToast({ title: '删除成功', icon: 'success' })
+            }).catch((err) => {
+              console.error('删除失败:', err)
+              uni.showToast({ title: '删除失败', icon: 'none' })
+            })
+          }
+        }
+      })
+    }
+  }
+}
+</script>
+
+
+<style lang="scss" scoped>
+.page {
+  background-color: #f7f8fa;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+/* 顶部筛选区域 */
+.filter-header {
+  background-color: #fff;
+  padding-top: var(--status-bar-height);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  z-index: 100;
+}
+
+.status-scroll {
+  white-space: nowrap;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.status-tabs {
+  display: flex;
+  flex-direction: row;
+  padding: 0 8px;
+}
+
+.tab-item {
+  position: relative;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.tab-text {
+  font-size: 14px;
+  color: #666;
+  
+  &--active {
+    color: #0066CC;
+    font-weight: 700;
+  }
+}
+
+.active-line {
+  position: absolute;
+  bottom: 4px;
+  width: 20px;
+  height: 3px;
+  background-color: #0066CC;
+  border-radius: 2px;
+}
+
+/* 搜索框 */
+.search-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 10px 16px;
+  padding: 0 12px;
+  height: 36px;
+  background-color: #f5f5f5;
+  border-radius: 18px;
+}
+
+.search-icon {
+  font-size: 14px;
+  color: #999;
+  margin-right: 8px;
+}
+
+.search-input {
+  flex: 1;
+  font-size: 14px;
+  color: #333;
+}
+
+.search-btn {
+  padding: 4px 12px;
+  background-color: #0066CC;
+  border-radius: 14px;
+  margin-left: 8px;
+}
+
+.search-btn-text {
+  font-size: 12px;
+  color: #fff;
+}
+
+/* 商品列表 */
+.product-scroll {
+  flex: 1;
+  width: 100%;
+}
+
+.loading-state {
+  padding: 60px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-text {
+  font-size: 14px;
+  color: #999;
+}
+
+.product-list {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 商品卡片 */
+.product-card {
+  display: flex;
+  flex-direction: row;
+  background-color: #fff;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.product-img {
+  width: 90px;
+  height: 90px;
+  border-radius: 8px;
+  background-color: #f5f5f5;
+  flex-shrink: 0;
+}
+
+.product-info {
+  flex: 1;
+  margin-left: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.info-top {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.product-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 700;
+  color: #333;
+  line-height: 1.4;
+  margin-right: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-tag {
+  padding: 2px 8px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.status-tag-pending {
+  background-color: #fff7e6;
+}
+
+.status-tag-online {
+  background-color: #e6f7ff;
+}
+
+.status-tag-offline {
+  background-color: #f5f5f5;
+}
+
+.status-tag-rejected {
+  background-color: #fff1f0;
+}
+
+.status-text {
+  font-size: 11px;
+}
+
+.status-text-pending {
+  color: #fa8c16;
+}
+
+.status-text-online {
+  color: #1890ff;
+}
+
+.status-text-offline {
+  color: #999;
+}
+
+.status-text-rejected {
+  color: #ff4d4f;
+}
+
+.info-middle {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.price-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+}
+
+.currency {
+  font-size: 12px;
+  color: #ff4d4f;
+  font-weight: 700;
+}
+
+.price {
+  font-size: 16px;
+  color: #ff4d4f;
+  font-weight: 700;
+}
+
+.original-price {
+  font-size: 11px;
+  color: #999;
+  margin-left: 6px;
+}
+
+.stock-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.stock-label {
+  font-size: 12px;
+  color: #999;
+}
+
+.stock-value {
+  font-size: 12px;
+  color: #333;
+  margin-left: 4px;
+}
+
+.stock-value-low {
+  color: #ff4d4f;
+}
+
+.info-bottom {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sales-text {
+  font-size: 12px;
+  color: #999;
+}
+
+.action-btns {
+  display: flex;
+  flex-direction: row;
+}
+
+.action-btn {
+  padding: 4px 12px;
+  border: 1px solid #0066CC;
+  border-radius: 14px;
+  margin-left: 8px;
+}
+
+.action-btn-delete {
+  border-color: #ff4d4f;
+}
+
+.action-btn-text {
+  font-size: 12px;
+  color: #0066CC;
+}
+
+.action-btn-text-delete {
+  color: #ff4d4f;
+}
+
+/* 空状态 */
+.empty-state {
+  padding: 80px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  color: #ccc;
+}
+
+.empty-text {
+  font-size: 14px;
+  color: #999;
+  margin-bottom: 20px;
+}
+
+.empty-btn {
+  padding: 10px 24px;
+  background-color: #0066CC;
+  border-radius: 20px;
+}
+
+.empty-btn-text {
+  font-size: 14px;
+  color: #fff;
+}
+
+/* 加载更多 */
+.load-more {
+  padding: 20px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.load-more-text {
+  font-size: 12px;
+  color: #999;
+}
+
+/* 底部发布按钮 */
+.publish-btn-wrapper {
+  position: fixed;
+  bottom: 20px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  z-index: 100;
+}
+
+.publish-btn {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 32px;
+  background-color: #0066CC;
+  border-radius: 24px;
+  box-shadow: 0 4px 12px rgba(0, 102, 204, 0.3);
+}
+
+.publish-icon {
+  font-size: 18px;
+  color: #fff;
+  margin-right: 6px;
+  font-weight: 700;
+}
+
+.publish-text {
+  font-size: 15px;
+  color: #fff;
+  font-weight: 700;
+}
+</style>

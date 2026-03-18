@@ -1,0 +1,250 @@
+/**
+ * @description 商品卡片组件
+ * @author 前端开发团队
+ * @date 2025-11-22
+ */
+
+<template>
+  <view class="product-card" @click="handleClick">
+    <!-- 商品图片 -->
+    <view class="product-card__image-wrapper">
+      <image
+        :src="product.image"
+        class="product-card__image"
+        mode="aspectFill"
+      />
+      <!-- 库存标签 -->
+      <view
+        v-if="product.stock <= 0"
+        class="product-card__stock-badge"
+      >
+        缺货
+      </view>
+      <view
+        v-else-if="product.isNew"
+        class="product-card__new-badge"
+      >
+        新品
+      </view>
+    </view>
+
+    <!-- 商品信息 -->
+    <view class="product-card__content">
+      <!-- 商品名称 -->
+      <view class="product-card__name">{{ product.name }}</view>
+
+      <!-- 商品描述 -->
+      <view class="product-card__description">
+        {{ product.description }}
+      </view>
+
+      <!-- 评分和销量 -->
+      <view class="product-card__stats">
+        <view class="product-card__rating">
+          ⭐ {{ product.rating }}
+        </view>
+        <view class="product-card__sales">
+          已售 {{ product.sales }}
+        </view>
+      </view>
+
+      <!-- 价格 -->
+      <view class="product-card__price-section">
+        <view class="product-card__current-price">
+          ¥{{ product.price }}
+        </view>
+        <view
+          v-if="product.originalPrice"
+          class="product-card__original-price"
+        >
+          ¥{{ product.originalPrice }}
+        </view>
+      </view>
+
+      <!-- 添加购物车按钮 -->
+      <view
+        class="product-card__add-btn"
+        @click.stop="handleAddToCart"
+      >
+        加入购物车
+      </view>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+import { defineComponent, PropType } from 'vue'
+
+interface Product {
+  id: number
+  name: string
+  description: string
+  price: number
+  originalPrice?: number
+  image: string
+  rating: number
+  sales: number
+  stock: number
+  isNew: boolean
+}
+
+export default defineComponent({
+  name: 'ProductCard',
+  props: {
+    product: {
+      type: Object as PropType<Product>,
+      required: true
+    }
+  },
+  emits: ['click', 'add-to-cart'],
+  methods: {
+    handleClick() {
+      this.$emit('click', this.product.id)
+    },
+    handleAddToCart() {
+      this.$emit('add-to-cart', this.product.id)
+    }
+  }
+})
+</script>
+
+<style scoped lang="scss">
+// 颜色变量
+$primary-color: #0066CC;
+$success-color: #52C41A;
+$text-dark: #333333;
+$text-gray: #666666;
+$text-light: #999999;
+$bg-light: #F5F5F5;
+$bg-white: #FFFFFF;
+$error-color: #FF4D4F;
+
+// 间距单位
+$spacing-xs: 4px;
+$spacing-sm: 8px;
+$spacing-md: 16px;
+
+// 圆角
+$radius-sm: 8px;
+$radius-md: 12px;
+
+.product-card {
+  background-color: $bg-white;
+  border-radius: $radius-md;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition-duration: 0.3s;
+  display: flex;
+  flex-direction: column;
+}
+
+.product-card__image-wrapper {
+  position: relative;
+  width: 100%;
+  padding-bottom: 100%;
+  overflow: hidden;
+  background-color: $bg-light;
+}
+
+.product-card__image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.product-card__stock-badge,
+.product-card__new-badge {
+  position: absolute;
+  top: $spacing-sm;
+  right: $spacing-sm;
+  padding: $spacing-xs $spacing-sm;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: $bg-white;
+  z-index: 2;
+}
+
+.product-card__stock-badge {
+  background-color: $error-color;
+}
+
+.product-card__new-badge {
+  background-color: $success-color;
+}
+
+.product-card__content {
+  flex: 1;
+  padding: $spacing-md;
+  display: flex;
+  flex-direction: column;
+}
+
+.product-card__name {
+  font-size: 14px;
+  font-weight: 700;
+  color: $text-dark;
+  margin-bottom: $spacing-xs;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.product-card__description {
+  font-size: 12px;
+  color: $text-light;
+  margin-bottom: $spacing-sm;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-card__stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: $text-light;
+  margin-bottom: $spacing-sm;
+}
+
+.product-card__rating {
+  flex: 1;
+}
+
+.product-card__sales {
+  text-align: right;
+}
+
+.product-card__price-section {
+  display: flex;
+  align-items: center;
+  margin-bottom: $spacing-md;
+}
+
+.product-card__current-price {
+  font-size: 18px;
+  font-weight: bold;
+  color: $primary-color;
+  margin-right: $spacing-sm;
+}
+
+.product-card__original-price {
+  font-size: 12px;
+  color: $text-light;
+  opacity: 0.7;
+}
+
+
+.product-card__add-btn {
+  background-color: $primary-color;
+  color: $bg-white;
+  padding: $spacing-sm $spacing-md;
+  border-radius: $radius-sm;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  transition-duration: 0.3s;
+}
+</style>

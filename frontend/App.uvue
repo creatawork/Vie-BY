@@ -1,0 +1,188 @@
+<script lang="uts">
+	let firstBackTime = 0
+	export default {
+		onLaunch: function () {
+			console.log('App Launch')
+		},
+		onShow: function () {
+			console.log('App Show')
+		},
+		onHide: function () {
+			console.log('App Hide')
+		},
+		// #ifdef APP-ANDROID
+		onLastPageBackPress: function () {
+			console.log('App LastPageBackPress')
+			if (firstBackTime == 0) {
+				uni.showToast({
+					title: '再按一次退出应用',
+					position: 'bottom',
+				})
+				firstBackTime = Date.now()
+				setTimeout(() => {
+					firstBackTime = 0
+				}, 2000)
+			} else if (Date.now() - firstBackTime < 2000) {
+				firstBackTime = Date.now()
+				uni.exit()
+			}
+		},
+		// #endif
+		onExit: function () {
+			console.log('App Exit')
+		},
+	}
+</script>
+
+<style lang="scss">
+	/*每个页面公共css */
+	@import '@/uni.scss';
+
+	/* 全局样式重置和基础样式（uvue 仅支持类选择器，这里改为类） */
+	.app-root-page {
+		background-color: $uni-bg-color-grey;
+		font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica,
+			Segoe UI, Arial, Roboto, 'PingFang SC', 'miui', 'Hiragino Sans GB', 'Microsoft Yahei',
+			sans-serif;
+		color: $uni-text-color;
+		font-size: $uni-font-size-base;
+		line-height: 1.5;
+	}
+
+	/* 通用flex布局类 */
+	.uni-row {
+		flex-direction: row;
+		/* #ifndef APP-NVUE */
+		display: flex;
+		/* #endif */
+	}
+
+	.uni-column {
+		flex-direction: column;
+		/* #ifndef APP-NVUE */
+		display: flex;
+		/* #endif */
+	}
+
+	.flex-row {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.flex-col {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.justify-between {
+		justify-content: space-between;
+	}
+
+	.justify-center {
+		justify-content: center;
+	}
+
+	.justify-end {
+		justify-content: flex-end;
+	}
+
+	.align-center {
+		align-items: center;
+	}
+
+	/* 通用卡片样式 */
+	.card {
+		background-color: #ffffff;
+		border-radius: $uni-border-radius-lg;
+		padding: $uni-spacing-base;
+		margin-bottom: $uni-spacing-base;
+		box-shadow: $uni-shadow-sm;
+	}
+
+	/* 通用按钮样式 */
+	.btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 44px;
+		border-radius: 22px;
+		font-size: $uni-font-size-lg;
+		/* uvue 仅支持 400 / 700，这里用 700 替代 500 */
+		font-weight: 700;
+		/* 移除不被支持的 transition: all，保留时长方便后续按需补充 */
+		transition-duration: 0.3s;
+		
+		&.btn-primary {
+			background-color: $uni-color-primary;
+			color: #ffffff;
+			box-shadow: 0 4px 12px rgba(0, 102, 204, 0.3);
+			/* 在 uvue 中不支持属性选择器 [disabled]，禁用态请在组件上额外加类控制 */
+		}
+		
+		&.btn-secondary {
+			background-color: $uni-color-secondary;
+			color: #ffffff;
+			box-shadow: 0 4px 12px rgba(82, 196, 26, 0.3);
+		}
+		
+		&.btn-outline {
+			background-color: transparent;
+			border: 1px solid $uni-color-primary;
+			color: $uni-color-primary;
+		}
+	}
+
+	/* 通用输入框样式 */
+	.input-group {
+		margin-bottom: $uni-spacing-lg;
+		
+		.input-label {
+			font-size: $uni-font-size-base;
+			color: $uni-text-color;
+			margin-bottom: $uni-spacing-sm;
+			font-weight: 400;
+		}
+		
+		.input-box {
+			height: 48px;
+			background-color: $uni-bg-color-grey;
+			border-radius: $uni-border-radius-base;
+			padding: 0 $uni-spacing-base;
+			font-size: $uni-font-size-base;
+			color: $uni-text-color;
+			border: 1px solid transparent;
+			transition-duration: 0.3s;
+			
+			&:focus {
+				background-color: #ffffff;
+				border-color: $uni-color-primary;
+				box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.1);
+			}
+		}
+	}
+
+	/* 页面容器 */
+	.page-container {
+		/* uvue 不支持 min-height: 100vh，使用 flex:1 由父容器拉伸 */
+		flex: 1;
+		background-color: $uni-bg-color-grey;
+		padding: $uni-spacing-base;
+		box-sizing: border-box;
+	}
+	
+	/* 文本截断 */
+	.text-ellipsis {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	
+	.text-ellipsis-2 {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: normal;
+		line-height: 1.4;
+		max-height: 40px; /* 约等于两行 */
+	}
+</style>

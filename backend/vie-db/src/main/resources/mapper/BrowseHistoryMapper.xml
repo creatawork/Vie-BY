@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.vie.db.mapper.BrowseHistoryMapper">
+
+    <!-- 分页查询用户浏览历史（关联商品信息） -->
+    <select id="selectBrowseHistoryPageWithProduct" resultType="java.util.HashMap">
+        SELECT
+            bh.id AS history_id,
+            bh.user_id,
+            bh.product_id,
+            bh.browse_time,
+            p.product_name,
+            p.main_image,
+            p.current_price,
+            p.original_price,
+            p.status,
+            p.stock,
+            p.sales_volume
+        FROM browse_history bh
+        INNER JOIN product p ON bh.product_id = p.id
+        WHERE bh.user_id = #{userId}
+          AND bh.is_deleted = 0
+          AND p.is_deleted = 0
+        ORDER BY bh.browse_time DESC
+    </select>
+
+</mapper>

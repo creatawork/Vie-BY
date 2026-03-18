@@ -1,0 +1,354 @@
+<template>
+	<view class="page-container">
+		<!-- 导航栏 -->
+		<view class="nav-bar">
+			<view class="nav-back" @click="goBack">
+				<text class="back-icon">‹</text>
+			</view>
+			<text class="nav-title">我的评价</text>
+			<view class="nav-placeholder"></view>
+		</view>
+
+		<!-- 评价列表 -->
+		<scroll-view class="review-list" scroll-y="true" @scrolltolower="loadMore">
+			<view v-if="reviews.length === 0 && !isLoading" class="empty-state">
+				<text class="empty-icon">📝</text>
+				<text class="empty-text">暂无评价记录</text>
+			</view>
+
+			<view class="review-card" v-for="(item, index) in reviews" :key="index">
+				<!-- 商品信息 -->
+				<view class="product-info" @click="goToProduct(item.productId)">
+					<image class="product-img" :src="item.productMainImage" mode="aspectFill"></image>
+					<view class="product-detail">
+						<text class="product-name">{{ item.productName }}</text>
+						<view class="rating-stars">
+							<text class="star-icon" v-for="i in 5" :key="i" :class="{ 'star-icon-active': i <= item.rating }">★</text>
+						</view>
+					</view>
+				</view>
+
+				<!-- 评价内容 -->
+				<view class="review-content">
+					<text class="content-text">{{ item.content }}</text>
+					
+					<!-- 评价图片 (如果有) -->
+					<view class="image-list" v-if="item.images">
+						<image class="review-img" v-for="(img, imgIdx) in getImages(item.images)" :key="imgIdx" :src="img" mode="aspectFill" @click="previewImage(getImages(item.images), imgIdx)"></image>
+					</view>
+				</view>
+				
+				<!-- 商家回复 -->
+				<view class="reply-box" v-if="item.replyContent">
+					<text class="reply-label">商家回复：</text>
+					<text class="reply-content">{{ item.replyContent }}</text>
+				</view>
+
+				<!-- 时间和状态 -->
+				<view class="review-footer">
+					<text class="review-time">{{ item.createTime }}</text>
+					<text class="review-status" v-if="item.status === 0">已隐藏</text>
+				</view>
+			</view>
+			
+			<view v-if="isLoading" class="loading-more">
+				<text class="loading-text">加载中...</text>
+			</view>
+			<view v-if="!hasMore && reviews.length > 0" class="no-more">
+				<text class="no-more-text">没有更多了</text>
+			</view>
+			<view style="height: 40rpx;"></view>
+		</scroll-view>
+	</view>
+</template>
+
+<script lang="uts">
+import { getMyReviews, type ReviewVO } from '@/api/review'
+
+export default {
+	data() {
+		return {
+			reviews: [] as ReviewVO[],
+			pageNum: 1,
+			pageSize: 10,
+			isLoading: false,
+			hasMore: true
+		}
+	},
+	onLoad() {
+		this.loadReviews()
+	},
+	methods: {
+		goBack() {
+			uni.navigateBack()
+		},
+		goToProduct(productId : number) {
+			uni.navigateTo({
+				url: `/pages/product/detail?id=${productId}`
+			})
+		},
+		loadReviews() {
+			if (this.isLoading || !this.hasMore) return
+			
+			this.isLoading = true
+			getMyReviews(this.pageNum, this.pageSize).then((res) => {
+				const data = res.data as UTSJSONObject
+				const records = data.getArray('records')
+				const total = (data.getNumber('total') ?? 0).toInt()
+				
+				const newReviews : ReviewVO[] = []
+				if (records != null) {
+					for (let i = 0; i < records.length; i++) {
+						const item = records[i] as UTSJSONObject
+						newReviews.push({
+							id: (item.getNumber('id') ?? 0).toInt(),
+							productId: (item.getNumber('productId') ?? 0).toInt(),
+							productName: item.getString('productName') ?? '',
+							productMainImage: item.getString('productMainImage') ?? '',
+							userId: (item.getNumber('userId') ?? 0).toInt(),
+							userNickname: item.getString('userNickname') ?? '',
+							userAvatar: item.getString('userAvatar') ?? '',
+							orderId: (item.getNumber('orderId') ?? 0).toInt(),
+							rating: (item.getNumber('rating') ?? 5).toInt(),
+							content: item.getString('content') ?? '',
+							images: item.getString('images') ?? '',
+							replyContent: item.getString('replyContent'),
+							replyTime: item.getString('replyTime'),
+							status: (item.getNumber('status') ?? 1).toInt(),
+							createTime: item.getString('createTime') ?? ''
+						} as ReviewVO)
+					}
+				}
+				
+				if (this.pageNum === 1) {
+					this.reviews = newReviews
+				} else {
+					this.reviews = this.reviews.concat(newReviews)
+				}
+				
+				this.hasMore = this.reviews.length < total
+				this.pageNum++
+				this.isLoading = false
+			}).catch((err) => {
+				console.error('获取我的评价失败:', err)
+				this.isLoading = false
+				if (this.pageNum === 1) {
+					uni.showToast({ title: '加载失败', icon: 'none' })
+				}
+			})
+		},
+		loadMore() {
+			this.loadReviews()
+		},
+		getImages(imagesStr : string) : string[] {
+			if (imagesStr == null || imagesStr == '') return []
+			try {
+				const arr = JSON.parse(imagesStr)
+				if (Array.isArray(arr)) {
+					return arr as string[]
+				}
+			} catch (e) {
+				// not json, maybe comma separated
+				if (imagesStr.includes(',')) {
+					return imagesStr.split(',')
+				}
+			}
+			return [imagesStr]
+		},
+		previewImage(urls: string[], current: number) {
+			uni.previewImage({
+				urls: urls,
+				current: current
+			})
+		}
+	}
+}
+</script>
+
+<style lang="scss" scoped>
+.page-container {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	background-color: #f7f8fa;
+}
+
+.nav-bar {
+	height: 44px;
+	background-color: #fff;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 16px;
+	padding-top: var(--status-bar-height);
+	box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+	z-index: 100;
+}
+
+.nav-back {
+	width: 40px;
+	height: 44px;
+	display: flex;
+	align-items: center;
+}
+
+.back-icon {
+	font-size: 28px;
+	color: #333;
+}
+
+.nav-title {
+	font-size: 16px;
+	font-weight: bold;
+	color: #333;
+}
+
+.nav-placeholder {
+	width: 40px;
+}
+
+.review-list {
+	flex: 1;
+	padding: 12px;
+}
+
+.review-card {
+	background-color: #fff;
+	border-radius: 12px;
+	padding: 16px;
+	margin-bottom: 12px;
+	box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+}
+
+.product-info {
+	display: flex;
+	flex-direction: row;
+	margin-bottom: 12px;
+	padding-bottom: 12px;
+	border-bottom: 1px solid #f5f5f5;
+}
+
+.product-img {
+	width: 48px;
+	height: 48px;
+	border-radius: 6px;
+	background-color: #f5f5f5;
+	margin-right: 12px;
+}
+
+.product-detail {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+}
+
+.product-name {
+	font-size: 14px;
+	color: #333;
+	margin-bottom: 6px;
+}
+
+.rating-stars {
+	display: flex;
+	flex-direction: row;
+}
+
+.star-icon {
+	font-size: 14px;
+	color: #eee;
+	margin-right: 2px;
+}
+
+.star-icon-active {
+	color: #ff9900;
+}
+
+.review-content {
+	margin-bottom: 12px;
+}
+
+.content-text {
+	font-size: 14px;
+	color: #333;
+	line-height: 1.5;
+	margin-bottom: 10px;
+}
+
+.image-list {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	margin-top: 8px;
+}
+
+.review-img {
+	width: 80px;
+	height: 80px;
+	border-radius: 6px;
+	margin-right: 8px;
+	margin-bottom: 8px;
+	background-color: #f5f5f5;
+}
+
+.reply-box {
+	background-color: #f8f8f8;
+	padding: 10px 12px;
+	border-radius: 6px;
+	margin-bottom: 12px;
+	display: flex;
+	flex-direction: column;
+}
+
+.reply-label {
+	font-size: 12px;
+	color: #666;
+	font-weight: bold;
+	margin-bottom: 4px;
+}
+
+.reply-content {
+	font-size: 13px;
+	color: #333;
+	line-height: 1.4;
+}
+
+.review-footer {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.review-time {
+	font-size: 12px;
+	color: #999;
+}
+
+.review-status {
+	font-size: 12px;
+	color: #ff4d4f;
+	background-color: #ffebee;
+	padding: 2px 6px;
+	border-radius: 4px;
+}
+
+.empty-state, .loading-more, .no-more {
+	padding: 30px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+}
+
+.empty-icon {
+	font-size: 48px;
+	margin-bottom: 16px;
+}
+
+.empty-text, .loading-text, .no-more-text {
+	font-size: 14px;
+	color: #999;
+}
+</style>

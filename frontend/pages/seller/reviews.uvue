@@ -1,0 +1,862 @@
+<template>
+	<view class="page-container">
+		<!-- 商品筛选提示 -->
+		<view class="product-tip">
+			<text class="product-tip-text">当前范围：{{ productId == 0 ? '全部商品评价' : (productName == '' ? ('ID:' + productId) : productName) }}</text>
+		</view>
+
+		<scroll-view class="product-tabs" scroll-x="true" :show-scrollbar="false" v-if="sellerProducts.length > 0">
+			<view class="product-tabs-row">
+				<view class="product-tab-item" :class="{ 'product-tab-item-active': productId === 0 }" @click="selectProduct(0, '全部商品')">
+					<text class="product-tab-text" :class="{ 'product-tab-text-active': productId === 0 }">全部商品</text>
+				</view>
+				<view class="product-tab-item" v-for="(p, idx) in sellerProducts" :key="idx" :class="{ 'product-tab-item-active': productId === (p.getNumber('id') ?? 0).toInt() }" @click="selectProduct((p.getNumber('id') ?? 0).toInt(), p.getString('productName') ?? '')">
+					<text class="product-tab-text" :class="{ 'product-tab-text-active': productId === (p.getNumber('id') ?? 0).toInt() }">{{ p.getString('productName') ?? ('商品' + (idx + 1)) }}</text>
+				</view>
+			</view>
+		</scroll-view>
+
+		<!-- 搜索区 -->
+		<view class="search-bar">
+			<text class="search-icon">🔍</text>
+			<input class="search-input" v-model="searchKeyword" placeholder="搜索评价内容 / 商品名" @confirm="handleSearch" />
+		</view>
+
+		<!-- 筛选区 -->
+		<view class="filter-bar">
+			<view class="filter-item" :class="{ 'filter-item-active': ratingFilter === 0 }" @click="setFilter(0)">
+				<text class="filter-item-text" :class="{ 'filter-item-active-text': ratingFilter === 0 }">全部</text>
+			</view>
+			<view class="filter-item" :class="{ 'filter-item-active': ratingFilter === 5 }" @click="setFilter(5)">
+				<text class="filter-item-text" :class="{ 'filter-item-active-text': ratingFilter === 5 }">好评</text>
+			</view>
+			<view class="filter-item" :class="{ 'filter-item-active': ratingFilter === 3 }" @click="setFilter(3)">
+				<text class="filter-item-text" :class="{ 'filter-item-active-text': ratingFilter === 3 }">中评</text>
+			</view>
+			<view class="filter-item" :class="{ 'filter-item-active': ratingFilter === 1 }" @click="setFilter(1)">
+				<text class="filter-item-text" :class="{ 'filter-item-active-text': ratingFilter === 1 }">差评</text>
+			</view>
+		</view>
+		<view class="summary-row" v-if="reviews.length > 0">
+			<text class="summary-text">当前已加载 {{ reviews.length }} 条评价</text>
+		</view>
+
+		<!-- 评价列表 -->
+		<scroll-view class="review-list" scroll-y="true" @scrolltolower="loadMore">
+			<view v-if="reviews.length === 0 && !isLoading" class="empty-state">
+				<text class="empty-icon">📝</text>
+				<text class="empty-text">暂无评价</text>
+			</view>
+
+			<view class="review-card" v-for="(item, index) in reviews" :key="index">
+				<view class="product-info" @click="goToProduct(item.productId)">
+					<image class="product-img" :src="item.productMainImage" mode="aspectFill"></image>
+					<text class="product-name">{{ item.productName }}</text>
+				</view>
+
+				<view class="review-header">
+					<view class="user-info">
+						<image class="avatar" :src="item.userAvatar" mode="aspectFill"></image>
+						<view class="user-meta">
+							<text class="nickname">{{ item.userNickname }}</text>
+							<text class="review-time">{{ item.createTime }}</text>
+						</view>
+					</view>
+					<view class="rating-stars">
+						<text class="star-icon" v-for="i in 5" :key="i" :class="{ 'star-icon-active': i <= item.rating }">★</text>
+					</view>
+				</view>
+
+				<view class="review-content">
+					<text class="content-text">{{ item.content }}</text>
+					<view class="image-list" v-if="item.images">
+						<image class="review-img" v-for="(img, imgIdx) in getImages(item.images)" :key="imgIdx" :src="img" mode="aspectFill" @click="previewImage(getImages(item.images), imgIdx)"></image>
+					</view>
+				</view>
+
+				<view class="reply-box" v-if="item.replyContent">
+					<text class="reply-label">我的回复：</text>
+					<text class="reply-text">{{ item.replyContent }}</text>
+					<text class="reply-time">{{ item.replyTime }}</text>
+				</view>
+
+				<view class="action-bar" v-if="item.replyContent == null || item.replyContent == ''">
+					<button class="reply-btn" @click="openReplyModal(item)">回复评价</button>
+				</view>
+			</view>
+
+			<view v-if="isLoading" class="loading-more">
+				<text class="loading-text">加载中...</text>
+			</view>
+			<view v-if="!hasMore && reviews.length > 0" class="no-more">
+				<text class="no-more-text">没有更多了</text>
+			</view>
+			<view style="height: 40rpx;"></view>
+		</scroll-view>
+
+		<!-- 回复弹窗 -->
+		<view class="modal-mask" v-if="showReplyModal" @click="closeReplyModal"></view>
+		<view class="reply-modal" v-if="showReplyModal">
+			<view class="modal-header">
+				<text class="modal-title">回复评价</text>
+				<text class="close-icon" @click="closeReplyModal">×</text>
+			</view>
+			<view class="modal-content">
+				<textarea class="reply-input" v-model="replyContent" placeholder="请输入回复内容(最多200字)" maxlength="200" :adjust-position="true" :cursor-spacing="120"></textarea>
+			</view>
+			<view class="modal-footer">
+				<button class="btn btn-cancel" @click="closeReplyModal">取消</button>
+				<button class="btn btn-confirm" @click="submitReply">确定</button>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script lang="uts">
+import { getSellerReviews, replyReview, getSellerProducts } from '@/api/seller'
+import type { ReviewVO } from '@/api/review'
+
+export default {
+	data() {
+		return {
+			productId: 0,
+			productName: '',
+			sellerProducts: [] as UTSJSONObject[],
+			productNameOptions: [] as string[],
+			reviews: [] as ReviewVO[],
+			allReviewsPool: [] as ReviewVO[],
+			allModeLoaded: false,
+			pageNum: 1,
+			pageSize: 10,
+			searchKeyword: '',
+			ratingFilter: 0, // 0-全部, 5-好评, 3-中评, 1-差评
+			isLoading: false,
+			hasMore: true,
+
+			// 回复弹窗
+			showReplyModal: false,
+			currentReviewId: 0,
+			replyContent: ''
+		}
+	},
+	onLoad(options : any) {
+		const opts = options as UTSJSONObject
+		this.productId = parseInt(opts.getString('productId') ?? '0')
+		this.productName = opts.getString('productName') ?? ''
+		if (this.productName != '') {
+			uni.setNavigationBarTitle({ title: `${this.productName}评价管理` })
+		}
+		this.loadSellerProducts(() => {
+			this.loadReviews()
+		})
+	},
+	methods: {
+		goBack() {
+			uni.navigateBack()
+		},
+		goToProduct(productId : number) {
+			uni.navigateTo({
+				url: `/pages/product/detail?id=${productId}`
+			})
+		},
+		loadSellerProducts(done : (() => void) | null = null) {
+			getSellerProducts({
+				pageNum: 1,
+				pageSize: 200,
+				status: null,
+				keyword: null,
+				categoryId: null
+			}).then((res) => {
+				const data = res.data as UTSJSONObject
+				const records = data.getArray('records')
+				const productList : UTSJSONObject[] = []
+				const nameOptions : string[] = []
+				if (records != null) {
+					for (let i = 0; i < records.length; i++) {
+						const item = records[i] as UTSJSONObject
+						productList.push(item)
+						nameOptions.push(item.getString('productName') ?? `商品${i + 1}`)
+					}
+				}
+				this.sellerProducts = productList
+				this.productNameOptions = nameOptions
+				if (this.productId < 0) {
+					this.productId = 0
+				}
+				if (this.productId === 0) {
+					this.productName = '全部商品'
+				}
+				if (done != null) done()
+			}).catch((err) => {
+				console.error('获取商家商品失败:', err)
+				if (done != null) done()
+			})
+		},
+		getSelectedProductLabel() : string {
+			if (this.productId <= 0) return '请选择商品'
+			if (this.productName != '') return this.productName
+			return `商品ID: ${this.productId}`
+		},
+		selectProduct(id : number, name : string) {
+			if (id < 0 || this.productId === id) return
+			this.productId = id
+			this.productName = name
+			this.handleSearch()
+		},
+		setFilter(rating : number) {
+			if (this.ratingFilter !== rating) {
+				this.ratingFilter = rating
+				this.handleSearch()
+			}
+		},
+		handleSearch() {
+			this.pageNum = 1
+			this.reviews = []
+			this.hasMore = true
+			if (this.productId === 0) {
+				this.allReviewsPool = [] as ReviewVO[]
+				this.allModeLoaded = false
+			}
+			this.loadReviews()
+		},
+		toReviewVO(item : UTSJSONObject) : ReviewVO {
+			return {
+				id: (item.getNumber('id') ?? 0).toInt(),
+				productId: (item.getNumber('productId') ?? 0).toInt(),
+				productName: item.getString('productName') ?? '',
+				productMainImage: item.getString('productMainImage') ?? '',
+				userId: (item.getNumber('userId') ?? 0).toInt(),
+				userNickname: item.getString('userNickname') ?? '',
+				userAvatar: item.getString('userAvatar') ?? '',
+				orderId: (item.getNumber('orderId') ?? 0).toInt(),
+				rating: (item.getNumber('rating') ?? 5).toInt(),
+				content: item.getString('content') ?? '',
+				images: item.getString('images') ?? '',
+				replyContent: item.getString('replyContent'),
+				replyTime: item.getString('replyTime'),
+				status: (item.getNumber('status') ?? 1).toInt(),
+				createTime: item.getString('createTime') ?? ''
+			} as ReviewVO
+		},
+		applyClientFilters(source : ReviewVO[]) : ReviewVO[] {
+			let list = source
+			if (this.ratingFilter !== 0) {
+				list = list.filter((item): boolean => item.rating === this.ratingFilter)
+			}
+			if (this.searchKeyword != '') {
+				const keyword = this.searchKeyword.toLowerCase()
+				list = list.filter((item): boolean => {
+					return item.productName.toLowerCase().includes(keyword) || item.content.toLowerCase().includes(keyword)
+				})
+			}
+			return list
+		},
+		loadReviews() {
+			if (this.isLoading || !this.hasMore) return
+			if (this.productId === 0) {
+				this.loadAllProductReviews()
+				return
+			}
+			this.loadSingleProductReviews()
+		},
+		loadSingleProductReviews() {
+			if (this.productId < 0) return
+			this.isLoading = true
+			getSellerReviews(this.productId, this.pageNum, this.pageSize, this.ratingFilter === 0 ? null : this.ratingFilter).then((res) => {
+				const data = res.data as UTSJSONObject
+				const records = data.getArray('records')
+				const total = (data.getNumber('total') ?? 0).toInt()
+				const newReviews : ReviewVO[] = []
+				if (records != null) {
+					for (let i = 0; i < records.length; i++) {
+						newReviews.push(this.toReviewVO(records[i] as UTSJSONObject))
+					}
+				}
+				const filteredReviews = this.applyClientFilters(newReviews)
+				this.reviews = this.pageNum === 1 ? filteredReviews : this.reviews.concat(filteredReviews)
+				this.hasMore = this.reviews.length < total && newReviews.length > 0
+				this.pageNum++
+				this.isLoading = false
+			}).catch((err) => {
+				console.error('获取评价列表失败:', err)
+				this.isLoading = false
+				if (this.pageNum === 1) uni.showToast({ title: '加载失败', icon: 'none' })
+			})
+		},
+		loadAllProductReviews() {
+			if (this.sellerProducts.length === 0) {
+				this.reviews = [] as ReviewVO[]
+				this.hasMore = false
+				return
+			}
+			if (this.allModeLoaded) {
+				const start = (this.pageNum - 1) * this.pageSize
+				const end = start + this.pageSize
+				const filtered = this.applyClientFilters(this.allReviewsPool)
+				this.reviews = filtered.slice(0, end)
+				this.hasMore = end < filtered.length
+				this.pageNum++
+				return
+			}
+			this.isLoading = true
+			const merged : ReviewVO[] = []
+			const productIds : number[] = []
+			for (let i = 0; i < this.sellerProducts.length; i++) {
+				const p = this.sellerProducts[i]
+				const id = (p.getNumber('id') ?? 0).toInt()
+				if (id > 0) {
+					productIds.push(id)
+				}
+			}
+
+			const finishAll = () => {
+				merged.sort((a, b): number => {
+					if (a.createTime == b.createTime) return 0
+					return a.createTime > b.createTime ? -1 : 1
+				})
+				this.allReviewsPool = merged
+				this.allModeLoaded = true
+				const filtered = this.applyClientFilters(this.allReviewsPool)
+				this.reviews = filtered.slice(0, this.pageSize)
+				this.hasMore = this.pageSize < filtered.length
+				this.pageNum = 2
+				this.isLoading = false
+			}
+
+			const self = this
+			function fetchByIndex(idx : number) {
+				if (idx >= productIds.length) {
+					finishAll()
+					return
+				}
+				const id = productIds[idx]
+				getSellerReviews(id, 1, 50, null).then((res) => {
+					const data = res.data as UTSJSONObject
+					const records = data.getArray('records')
+					if (records != null) {
+						for (let j = 0; j < records.length; j++) {
+							merged.push(self.toReviewVO(records[j] as UTSJSONObject))
+						}
+					}
+					fetchByIndex(idx + 1)
+				}).catch((err) => {
+					console.error('获取商品评价失败:', err)
+					fetchByIndex(idx + 1)
+				})
+			}
+
+			fetchByIndex(0)
+		},
+		loadMore() {
+			this.loadReviews()
+		},
+		getImages(imagesStr : string) : string[] {
+			if (imagesStr == null || imagesStr == '') return [] as string[]
+			try {
+				const arr = JSON.parse(imagesStr)
+				if (Array.isArray(arr)) {
+					return arr as string[]
+				}
+			} catch (e) {
+				if (imagesStr.includes(',')) {
+					return imagesStr.split(',')
+				}
+			}
+			return [imagesStr] as string[]
+		},
+		previewImage(urls: string[], current: number) {
+			uni.previewImage({
+				urls: urls,
+				current: current
+			})
+		},
+		openReplyModal(item : ReviewVO) {
+			this.currentReviewId = item.id
+			this.replyContent = ''
+			this.showReplyModal = true
+		},
+		closeReplyModal() {
+			this.showReplyModal = false
+		},
+		submitReply() {
+			if (this.replyContent.trim() == '') {
+				uni.showToast({ title: '请输入回复内容', icon: 'none' })
+				return
+			}
+
+			uni.showLoading({ title: '提交中' })
+			replyReview(this.currentReviewId, this.replyContent).then((_) => {
+				uni.hideLoading()
+				uni.showToast({ title: '回复成功', icon: 'success' })
+
+				// 更新本地数据
+				const review = this.reviews.find((item): boolean => item.id === this.currentReviewId)
+				if (review != null) {
+					review.replyContent = this.replyContent
+					// 简单格式化时间
+					const now = new Date()
+					review.replyTime = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
+				}
+
+				this.closeReplyModal()
+			}).catch((err) => {
+				uni.hideLoading()
+				console.error('回复失败:', err)
+				uni.showToast({ title: '回复失败', icon: 'none' })
+			})
+		}
+	}
+}
+</script>
+
+<style lang="scss" scoped>
+.page-container {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	background-color: #f7f8fa;
+}
+
+.product-tip {
+	margin: 12px 12px 8px;
+	padding: 12px 14px;
+	background: linear-gradient(135deg, #eef5ff 0%, #f7faff 100%);
+	border: 1px solid #dbe9ff;
+	border-radius: 10px;
+}
+
+.product-tip-text {
+	font-size: 13px;
+	color: #2d5fa8;
+}
+
+.product-tabs {
+	height: 44px;
+	padding: 0 12px 10px;
+}
+
+.product-tabs-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	height: 34px;
+	width: auto;
+}
+
+.product-tab-item {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	height: 34px;
+	padding: 0 14px;
+	margin-right: 8px;
+	background-color: #ffffff;
+	border: 1px solid #e8ecf3;
+	border-radius: 17px;
+	flex-shrink: 0;
+}
+
+.product-tab-item-active {
+	background: linear-gradient(135deg, #2f80ff 0%, #1d6df2 100%);
+	border-color: #2f80ff;
+	box-shadow: 0 4px 10px rgba(47, 128, 255, 0.2);
+}
+
+.product-tab-text {
+	font-size: 12px;
+	color: #4f5d75;
+}
+
+.product-tab-text-active {
+	color: #ffffff;
+	font-weight: bold;
+}
+
+.summary-row {
+	padding: 6px 16px 8px;
+}
+
+.summary-text {
+	font-size: 12px;
+	color: #8a94a6;
+}
+
+
+.nav-bar {
+	height: 44px;
+	background-color: #fff;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 16px;
+	padding-top: var(--status-bar-height);
+	box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+	z-index: 100;
+}
+
+.nav-back {
+	width: 40px;
+	height: 44px;
+	display: flex;
+	align-items: center;
+}
+
+.back-icon {
+	font-size: 28px;
+	color: #333;
+}
+
+.nav-title {
+	font-size: 16px;
+	font-weight: bold;
+	color: #333;
+}
+
+.nav-placeholder {
+	width: 40px;
+}
+
+.search-bar {
+	background-color: #fff;
+	margin: 0 12px;
+	padding: 10px 12px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	border-radius: 12px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+}
+
+.search-icon {
+	font-size: 16px;
+	color: #8b95a7;
+	margin-right: 8px;
+}
+
+.search-input {
+	flex: 1;
+	height: 36px;
+	background-color: #f4f7fc;
+	border-radius: 18px;
+	padding: 0 16px;
+	font-size: 14px;
+}
+
+.filter-bar {
+	display: flex;
+	flex-direction: row;
+	background-color: #fff;
+	margin: 10px 12px 0;
+	padding: 10px 12px;
+	border-radius: 12px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+}
+
+.filter-item {
+	padding: 5px 12px;
+	border-radius: 14px;
+	background-color: #f2f4f8;
+	margin-right: 10px;
+}
+
+.filter-item-text {
+	font-size: 13px;
+	color: #667085;
+}
+
+.filter-item-active {
+	background-color: #e8f1ff;
+}
+
+.filter-item-active-text {
+	color: #1d6df2;
+	font-weight: bold;
+}
+
+.review-list {
+	flex: 1;
+	padding: 12px;
+}
+
+.review-card {
+	background-color: #fff;
+	border-radius: 14px;
+	padding: 14px;
+	margin-bottom: 12px;
+	box-shadow: 0 6px 16px rgba(17, 24, 39, 0.05);
+	display: flex;
+	flex-direction: column;
+	border: 1px solid #edf1f7;
+}
+
+.product-info {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	background-color: #f8fafc;
+	padding: 8px;
+	border-radius: 8px;
+	margin-bottom: 14px;
+}
+
+.product-img {
+	width: 40px;
+	height: 40px;
+	border-radius: 6px;
+	margin-right: 8px;
+	background-color: #eee;
+}
+
+.product-name {
+	flex: 1;
+	font-size: 13px;
+	color: #4b5565;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.review-header {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 12px;
+}
+
+.user-info {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+}
+
+.avatar {
+	width: 36px;
+	height: 36px;
+	border-radius: 18px;
+	background-color: #eee;
+	margin-right: 10px;
+}
+
+.user-meta {
+	display: flex;
+	flex-direction: column;
+}
+
+.nickname {
+	font-size: 14px;
+	color: #333;
+	font-weight: bold;
+}
+
+.review-time {
+	font-size: 12px;
+	color: #999;
+	margin-top: 2px;
+}
+
+.rating-stars {
+	display: flex;
+	flex-direction: row;
+}
+
+.star-icon {
+	font-size: 14px;
+	color: #eee;
+	margin-right: 2px;
+}
+
+.star-icon-active {
+	color: #ff9900;
+}
+
+.review-content {
+	margin-bottom: 12px;
+	display: flex;
+	flex-direction: column;
+}
+
+.content-text {
+	font-size: 14px;
+	color: #333;
+	line-height: 1.5;
+	margin-bottom: 10px;
+}
+
+.image-list {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+}
+
+.review-img {
+	width: 80px;
+	height: 80px;
+	border-radius: 6px;
+	margin-right: 8px;
+	margin-bottom: 8px;
+	background-color: #f5f5f5;
+}
+
+.reply-box {
+	background-color: #f8f8f8;
+	border-radius: 8px;
+	padding: 12px;
+	margin-top: 12px;
+	display: flex;
+	flex-direction: column;
+}
+
+.reply-label {
+	font-size: 13px;
+	color: #0066CC;
+	font-weight: bold;
+	margin-bottom: 6px;
+}
+
+.reply-text {
+	font-size: 13px;
+	color: #666;
+	line-height: 1.4;
+	margin-bottom: 6px;
+}
+
+.reply-time {
+	font-size: 11px;
+	color: #999;
+}
+
+.action-bar {
+	display: flex;
+	flex-direction: row;
+	justify-content: flex-end;
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px solid #f5f5f5;
+}
+
+.reply-btn {
+	margin: 0;
+	padding: 0 16px;
+	height: 30px;
+	line-height: 30px;
+	font-size: 13px;
+	background-color: #fff;
+	color: #0066CC;
+	border: 1px solid #0066CC;
+	border-radius: 15px;
+}
+
+.empty-state, .loading-more, .no-more {
+	padding: 30px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+}
+
+.empty-icon {
+	font-size: 48px;
+	margin-bottom: 16px;
+}
+
+.empty-text, .loading-text, .no-more-text {
+	font-size: 14px;
+	color: #999;
+}
+
+/* 弹窗样式 */
+.modal-mask {
+	position: fixed;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	left: 0;
+	background-color: rgba(0, 0, 0, 0.5);
+	z-index: 1000;
+}
+
+.reply-modal {
+	position: fixed;
+	left: 50%;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	width: 300px;
+	background-color: #fff;
+	border-radius: 16px;
+	z-index: 1001;
+	display: flex;
+	flex-direction: column;
+}
+
+.modal-header {
+	padding: 16px 20px;
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: center;
+	border-bottom: 1px solid #f5f5f5;
+}
+
+.modal-title {
+	font-size: 16px;
+	font-weight: bold;
+	color: #333;
+}
+
+.close-icon {
+	font-size: 24px;
+	color: #999;
+	padding: 0 5px;
+}
+
+.modal-content {
+	padding: 20px;
+	display: flex;
+	flex-direction: column;
+}
+
+.reply-input {
+	width: 100%;
+	height: 120px;
+	background-color: #f5f5f5;
+	border-radius: 8px;
+	padding: 12px;
+	font-size: 14px;
+	box-sizing: border-box;
+}
+
+.modal-footer {
+	display: flex;
+	flex-direction: row;
+	padding: 0;
+	border-top: 1px solid #eee;
+}
+
+.btn {
+	flex: 1;
+	height: 50px;
+	line-height: 50px;
+	text-align: center;
+	font-size: 16px;
+	background-color: transparent;
+	border-radius: 0;
+	margin: 0;
+}
+
+.btn-cancel {
+	color: #666;
+	border-right: 1px solid #eee;
+}
+
+.btn-confirm {
+	color: #0066CC;
+	font-weight: bold;
+}
+
+.btn-confirm-disabled {
+	color: #ccc;
+}
+</style>

@@ -1,0 +1,424 @@
+import { register } from '@/api/user';
+type RegisterForm = {
+    __$originalPosition?: UTSSourceMapPosition<"RegisterForm", "pages/register/register.uvue", 141, 6>;
+    username: string;
+    email: string;
+    phone: string;
+    password: string;
+    confirmPassword: string;
+    agreeTerms: boolean;
+};
+type RegisterErrors = {
+    __$originalPosition?: UTSSourceMapPosition<"RegisterErrors", "pages/register/register.uvue", 150, 6>;
+    username: string;
+    email: string;
+    phone: string;
+    password: string;
+    confirmPassword: string;
+    agreement: string;
+};
+const __sfc__ = defineComponent({
+    data() {
+        return {
+            form: {
+                username: '',
+                email: '',
+                phone: '',
+                password: '',
+                confirmPassword: '',
+                agreeTerms: false
+            } as RegisterForm,
+            errors: {
+                username: '',
+                email: '',
+                phone: '',
+                password: '',
+                confirmPassword: '',
+                agreement: ''
+            } as RegisterErrors,
+            showPassword: false,
+            showConfirmPassword: false,
+            isLoading: false
+        };
+    },
+    computed: {
+        strengthLevel(): number {
+            const pwd = this.form.password;
+            if (pwd == '')
+                return 0;
+            let score = 0;
+            if (pwd.length >= 6)
+                score++;
+            if (pwd.length >= 8)
+                score++;
+            if (/[a-z]/.test(pwd) && /[A-Z]/.test(pwd))
+                score++;
+            if (/[0-9]/.test(pwd))
+                score++;
+            if (/[^a-zA-Z0-9]/.test(pwd))
+                score++;
+            if (score <= 2)
+                return 1;
+            if (score <= 4)
+                return 2;
+            return 3;
+        },
+        strengthText(): string {
+            const levels = ['', '弱', '中', '强'];
+            return levels[this.strengthLevel];
+        }
+    },
+    methods: {
+        validateUsername() {
+            const username = this.form.username.trim();
+            if (username == '') {
+                this.errors.username = '请输入用户名';
+            }
+            else if (username.length < 3) {
+                this.errors.username = '用户名至少3个字符';
+            }
+            else if (username.length > 20) {
+                this.errors.username = '用户名最多20个字符';
+            }
+            else if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+                this.errors.username = '用户名只能包含字母、数字和下划线';
+            }
+            else {
+                this.errors.username = '';
+            }
+        },
+        validateEmail() {
+            const email = this.form.email.trim();
+            if (email == '') {
+                this.errors.email = '请输入邮箱';
+            }
+            else if (!/^[a-zA-Z0-9_.-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email)) {
+                this.errors.email = '请输入有效的邮箱地址';
+            }
+            else {
+                this.errors.email = '';
+            }
+        },
+        validatePhone() {
+            this.form.phone = this.form.phone.replace(/[^0-9]/g, '').slice(0, 11);
+            const phone = this.form.phone.trim();
+            if (phone == '') {
+                this.errors.phone = '请输入手机号';
+            }
+            else if (!/^1[3-9][0-9]{9}$/.test(phone)) {
+                this.errors.phone = '请输入有效的手机号';
+            }
+            else {
+                this.errors.phone = '';
+            }
+        },
+        validatePassword() {
+            const password = this.form.password.trim();
+            if (password == '') {
+                this.errors.password = '请输入密码';
+            }
+            else if (password.length < 6) {
+                this.errors.password = '密码至少6个字符';
+            }
+            else {
+                this.errors.password = '';
+            }
+            // 更新表单值为去除空格后的值
+            this.form.password = password;
+            // 如果确认密码不为空，同时触发确认密码验证
+            if (this.form.confirmPassword != '') {
+                this.validateConfirmPassword();
+            }
+        },
+        validateConfirmPassword() {
+            const confirmPassword = this.form.confirmPassword.trim();
+            const password = this.form.password.trim();
+            if (confirmPassword == '') {
+                this.errors.confirmPassword = '请确认密码';
+            }
+            else if (confirmPassword != password) {
+                this.errors.confirmPassword = '两次输入的密码不一致';
+            }
+            else {
+                this.errors.confirmPassword = '';
+            }
+            // 更新表单值为去除空格后的值
+            this.form.confirmPassword = confirmPassword;
+            this.form.password = password;
+        },
+        validateAgreement() {
+            if (this.form.agreeTerms == false) {
+                this.errors.agreement = '请同意用户协议和隐私政策';
+            }
+            else {
+                this.errors.agreement = '';
+            }
+        },
+        handleRegister() {
+            if (this.isLoading) {
+                return;
+            }
+            // 先 trim 所有输入
+            this.form.username = this.form.username.trim();
+            this.form.email = this.form.email.trim();
+            this.form.phone = this.form.phone.trim();
+            this.form.password = this.form.password.trim();
+            this.form.confirmPassword = this.form.confirmPassword.trim();
+            this.validateUsername();
+            this.validateEmail();
+            this.validatePhone();
+            this.validatePassword();
+            this.validateConfirmPassword();
+            this.validateAgreement();
+            // Check if there are any errors
+            const hasError = this.errors.username != '' || this.errors.email != '' || this.errors.phone != '' ||
+                this.errors.password != '' || this.errors.confirmPassword != '' || this.errors.agreement != '';
+            if (hasError) {
+                return;
+            }
+            this.isLoading = true;
+            register(this.form.username, this.form.email, this.form.phone, this.form.password, this.form.username, // nickname 使用 username 作为默认值
+            this.form.confirmPassword).then((response) => {
+                this.isLoading = false;
+                uni.showToast({
+                    title: '注册成功',
+                    icon: 'success'
+                });
+                setTimeout(() => {
+                    uni.navigateTo({
+                        url: '/pages/login/login'
+                    });
+                }, 500);
+            }).catch((error) => {
+                this.isLoading = false;
+                const errMsg = error != null && (error as Error).message != null && (error as Error).message != ''
+                    ? (error as Error).message
+                    : '注册失败，请稍后重试';
+                uni.showToast({
+                    title: errMsg,
+                    icon: 'none'
+                });
+            });
+        },
+        handleViewTerms() {
+            uni.showToast({
+                title: '用户协议功能开发中',
+                icon: 'none'
+            });
+        },
+        handleViewPrivacy() {
+            uni.showToast({
+                title: '隐私政策功能开发中',
+                icon: 'none'
+            });
+        },
+        handleLogin() {
+            uni.navigateTo({
+                url: '/pages/login/login'
+            });
+        },
+        handleBack() {
+            uni.navigateBack();
+        }
+    }
+});
+export default __sfc__;
+function GenPagesRegisterRegisterRender(this: InstanceType<typeof __sfc__>): any | null {
+    const _ctx = this;
+    const _cache = this.$.renderCache;
+    return createElementVNode("view", utsMapOf({ class: "page-container" }), [
+        createElementVNode("view", utsMapOf({ class: "header" }), [
+            createElementVNode("view", utsMapOf({
+                class: "back-btn",
+                onClick: _ctx.handleBack
+            }), [
+                createElementVNode("text", utsMapOf({ class: "back-icon" }), "←")
+            ], 8 /* PROPS */, ["onClick"]),
+            createElementVNode("text", utsMapOf({ class: "title" }), "创建账号"),
+            createElementVNode("text", utsMapOf({ class: "subtitle" }), "填写以下信息完成注册")
+        ]),
+        createElementVNode("scroll-view", utsMapOf({
+            class: "main-scroll",
+            "scroll-y": "true",
+            "show-scrollbar": false
+        }), [
+            createElementVNode("view", utsMapOf({ class: "form-area" }), [
+                createElementVNode("view", utsMapOf({
+                    class: normalizeClass(["input-wrap", utsMapOf({ 'input-wrap-error': _ctx.errors.username != '' })])
+                }), [
+                    createElementVNode("input", utsMapOf({
+                        modelValue: _ctx.form.username,
+                        onInput: ($event: InputEvent) => { (_ctx.form.username) = $event.detail.value; },
+                        type: "text",
+                        placeholder: "用户名",
+                        "placeholder-class": "placeholder",
+                        class: "input-field",
+                        onBlur: _ctx.validateUsername
+                    }), null, 40 /* PROPS, NEED_HYDRATION */, ["modelValue", "onInput", "onBlur"])
+                ], 2 /* CLASS */),
+                _ctx.errors.username != ''
+                    ? createElementVNode("text", utsMapOf({
+                        key: 0,
+                        class: "error-msg"
+                    }), toDisplayString(_ctx.errors.username), 1 /* TEXT */)
+                    : createCommentVNode("v-if", true),
+                createElementVNode("view", utsMapOf({
+                    class: normalizeClass(["input-wrap", utsMapOf({ 'input-wrap-error': _ctx.errors.email != '' })])
+                }), [
+                    createElementVNode("input", utsMapOf({
+                        modelValue: _ctx.form.email,
+                        onInput: ($event: InputEvent) => { (_ctx.form.email) = $event.detail.value; },
+                        type: "text",
+                        placeholder: "邮箱地址",
+                        "placeholder-class": "placeholder",
+                        class: "input-field",
+                        onBlur: _ctx.validateEmail
+                    }), null, 40 /* PROPS, NEED_HYDRATION */, ["modelValue", "onInput", "onBlur"])
+                ], 2 /* CLASS */),
+                _ctx.errors.email != ''
+                    ? createElementVNode("text", utsMapOf({
+                        key: 1,
+                        class: "error-msg"
+                    }), toDisplayString(_ctx.errors.email), 1 /* TEXT */)
+                    : createCommentVNode("v-if", true),
+                createElementVNode("view", utsMapOf({
+                    class: normalizeClass(["input-wrap", utsMapOf({ 'input-wrap-error': _ctx.errors.phone != '' })])
+                }), [
+                    createElementVNode("input", utsMapOf({
+                        modelValue: _ctx.form.phone,
+                        onInput: ($event: InputEvent) => { (_ctx.form.phone) = $event.detail.value; },
+                        type: "text",
+                        maxlength: "11",
+                        placeholder: "手机号码",
+                        "placeholder-class": "placeholder",
+                        class: "input-field",
+                        onBlur: _ctx.validatePhone
+                    }), null, 40 /* PROPS, NEED_HYDRATION */, ["modelValue", "onInput", "onBlur"])
+                ], 2 /* CLASS */),
+                _ctx.errors.phone != ''
+                    ? createElementVNode("text", utsMapOf({
+                        key: 2,
+                        class: "error-msg"
+                    }), toDisplayString(_ctx.errors.phone), 1 /* TEXT */)
+                    : createCommentVNode("v-if", true),
+                createElementVNode("view", utsMapOf({
+                    class: normalizeClass(["input-wrap", utsMapOf({ 'input-wrap-error': _ctx.errors.password != '' })])
+                }), [
+                    createElementVNode("input", utsMapOf({
+                        modelValue: _ctx.form.password,
+                        onInput: ($event: InputEvent) => { (_ctx.form.password) = $event.detail.value; },
+                        type: _ctx.showPassword ? 'text' : 'password',
+                        placeholder: "密码 (至少6位)",
+                        "placeholder-class": "placeholder",
+                        class: "input-field",
+                        onBlur: _ctx.validatePassword
+                    }), null, 40 /* PROPS, NEED_HYDRATION */, ["modelValue", "onInput", "type", "onBlur"]),
+                    createElementVNode("view", utsMapOf({
+                        class: "action-btn",
+                        onClick: () => { _ctx.showPassword = !_ctx.showPassword; }
+                    }), [
+                        createElementVNode("text", utsMapOf({ class: "action-text" }), toDisplayString(_ctx.showPassword ? '隐藏' : '显示'), 1 /* TEXT */)
+                    ], 8 /* PROPS */, ["onClick"])
+                ], 2 /* CLASS */),
+                _ctx.errors.password != ''
+                    ? createElementVNode("text", utsMapOf({
+                        key: 3,
+                        class: "error-msg"
+                    }), toDisplayString(_ctx.errors.password), 1 /* TEXT */)
+                    : createCommentVNode("v-if", true),
+                _ctx.form.password != ''
+                    ? createElementVNode("view", utsMapOf({
+                        key: 4,
+                        class: "strength-row"
+                    }), [
+                        createElementVNode("view", utsMapOf({ class: "strength-bars" }), [
+                            createElementVNode("view", utsMapOf({
+                                class: normalizeClass(["bar", utsMapOf({ 'bar-active-weak': _ctx.strengthLevel >= 1 })])
+                            }), null, 2 /* CLASS */),
+                            createElementVNode("view", utsMapOf({
+                                class: normalizeClass(["bar", utsMapOf({ 'bar-active-medium': _ctx.strengthLevel >= 2 })])
+                            }), null, 2 /* CLASS */),
+                            createElementVNode("view", utsMapOf({
+                                class: normalizeClass(["bar", utsMapOf({ 'bar-active-strong': _ctx.strengthLevel >= 3 })])
+                            }), null, 2 /* CLASS */)
+                        ]),
+                        createElementVNode("text", utsMapOf({ class: "strength-label" }), toDisplayString(_ctx.strengthText), 1 /* TEXT */)
+                    ])
+                    : createCommentVNode("v-if", true),
+                createElementVNode("view", utsMapOf({
+                    class: normalizeClass(["input-wrap", utsMapOf({ 'input-wrap-error': _ctx.errors.confirmPassword != '' })])
+                }), [
+                    createElementVNode("input", utsMapOf({
+                        modelValue: _ctx.form.confirmPassword,
+                        onInput: ($event: InputEvent) => { (_ctx.form.confirmPassword) = $event.detail.value; },
+                        type: _ctx.showConfirmPassword ? 'text' : 'password',
+                        placeholder: "确认密码",
+                        "placeholder-class": "placeholder",
+                        class: "input-field",
+                        onBlur: _ctx.validateConfirmPassword
+                    }), null, 40 /* PROPS, NEED_HYDRATION */, ["modelValue", "onInput", "type", "onBlur"]),
+                    createElementVNode("view", utsMapOf({
+                        class: "action-btn",
+                        onClick: () => { _ctx.showConfirmPassword = !_ctx.showConfirmPassword; }
+                    }), [
+                        createElementVNode("text", utsMapOf({ class: "action-text" }), toDisplayString(_ctx.showConfirmPassword ? '隐藏' : '显示'), 1 /* TEXT */)
+                    ], 8 /* PROPS */, ["onClick"])
+                ], 2 /* CLASS */),
+                _ctx.errors.confirmPassword != ''
+                    ? createElementVNode("text", utsMapOf({
+                        key: 5,
+                        class: "error-msg"
+                    }), toDisplayString(_ctx.errors.confirmPassword), 1 /* TEXT */)
+                    : createCommentVNode("v-if", true),
+                createElementVNode("view", utsMapOf({ class: "agreement-row" }), [
+                    createElementVNode("view", utsMapOf({
+                        class: normalizeClass(["checkbox", utsMapOf({ 'checkbox-checked': _ctx.form.agreeTerms })]),
+                        onClick: () => { _ctx.form.agreeTerms = !_ctx.form.agreeTerms; }
+                    }), [
+                        isTrue(_ctx.form.agreeTerms)
+                            ? createElementVNode("text", utsMapOf({
+                                key: 0,
+                                class: "check-mark"
+                            }), "✓")
+                            : createCommentVNode("v-if", true)
+                    ], 10 /* CLASS, PROPS */, ["onClick"]),
+                    createElementVNode("view", utsMapOf({ class: "agreement-text" }), [
+                        createElementVNode("text", utsMapOf({ class: "text-gray" }), "我已阅读并同意"),
+                        createElementVNode("text", utsMapOf({
+                            class: "text-link",
+                            onClick: _ctx.handleViewTerms
+                        }), "《用户协议》", 8 /* PROPS */, ["onClick"]),
+                        createElementVNode("text", utsMapOf({ class: "text-gray" }), "和"),
+                        createElementVNode("text", utsMapOf({
+                            class: "text-link",
+                            onClick: _ctx.handleViewPrivacy
+                        }), "《隐私政策》", 8 /* PROPS */, ["onClick"])
+                    ])
+                ]),
+                _ctx.errors.agreement != ''
+                    ? createElementVNode("text", utsMapOf({
+                        key: 6,
+                        class: "error-msg error-center"
+                    }), toDisplayString(_ctx.errors.agreement), 1 /* TEXT */)
+                    : createCommentVNode("v-if", true),
+                createElementVNode("button", utsMapOf({
+                    class: normalizeClass(["primary-btn", utsMapOf({ 'primary-btn-disabled': _ctx.isLoading })]),
+                    loading: _ctx.isLoading,
+                    onClick: _ctx.handleRegister,
+                    disabled: _ctx.isLoading
+                }), toDisplayString(_ctx.isLoading ? '注册中...' : '注 册'), 11 /* TEXT, CLASS, PROPS */, ["loading", "onClick", "disabled"]),
+                createElementVNode("view", utsMapOf({ class: "footer-link" }), [
+                    createElementVNode("text", utsMapOf({ class: "text-gray" }), "已有账号？"),
+                    createElementVNode("view", utsMapOf({
+                        class: "link-wrap",
+                        onClick: withModifiers(_ctx.handleLogin, ["stop"])
+                    }), [
+                        createElementVNode("text", utsMapOf({ class: "text-link bold" }), "直接登录")
+                    ], 8 /* PROPS */, ["onClick"])
+                ])
+            ])
+        ])
+    ]);
+}
+const GenPagesRegisterRegisterStyles = [utsMapOf([["page-container", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "column"], ["flex", 1], ["backgroundColor", "#ffffff"]]))], ["header", padStyleMapOf(utsMapOf([["paddingTop", "80rpx"], ["paddingRight", "60rpx"], ["paddingBottom", "40rpx"], ["paddingLeft", "60rpx"], ["backgroundColor", "#ffffff"], ["zIndex", 10]]))], ["back-btn", padStyleMapOf(utsMapOf([["width", "80rpx"], ["height", "80rpx"], ["display", "flex"], ["alignItems", "center"], ["marginLeft", "-20rpx"], ["marginBottom", "20rpx"]]))], ["back-icon", padStyleMapOf(utsMapOf([["fontSize", "48rpx"], ["color", "#333333"], ["fontWeight", "normal"]]))], ["title", padStyleMapOf(utsMapOf([["fontSize", "56rpx"], ["fontWeight", "700"], ["color", "#111111"], ["marginBottom", "16rpx"], ["letterSpacing", "2rpx"]]))], ["subtitle", padStyleMapOf(utsMapOf([["fontSize", "28rpx"], ["color", "#888888"]]))], ["main-scroll", padStyleMapOf(utsMapOf([["flex", 1], ["height", 0]]))], ["form-area", padStyleMapOf(utsMapOf([["paddingTop", 0], ["paddingRight", "60rpx"], ["paddingBottom", "80rpx"], ["paddingLeft", "60rpx"], ["display", "flex"], ["flexDirection", "column"]]))], ["input-wrap", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["backgroundColor", "#f7f8fa"], ["height", "110rpx"], ["borderTopLeftRadius", "24rpx"], ["borderTopRightRadius", "24rpx"], ["borderBottomRightRadius", "24rpx"], ["borderBottomLeftRadius", "24rpx"], ["paddingTop", 0], ["paddingRight", "32rpx"], ["paddingBottom", 0], ["paddingLeft", "32rpx"], ["marginTop", "32rpx"], ["borderTopWidth", "2rpx"], ["borderRightWidth", "2rpx"], ["borderBottomWidth", "2rpx"], ["borderLeftWidth", "2rpx"], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "rgba(0,0,0,0)"], ["borderRightColor", "rgba(0,0,0,0)"], ["borderBottomColor", "rgba(0,0,0,0)"], ["borderLeftColor", "rgba(0,0,0,0)"]]))], ["input-wrap-error", padStyleMapOf(utsMapOf([["borderTopColor", "#ff4d4f"], ["borderRightColor", "#ff4d4f"], ["borderBottomColor", "#ff4d4f"], ["borderLeftColor", "#ff4d4f"], ["backgroundColor", "#fff0f0"]]))], ["input-field", padStyleMapOf(utsMapOf([["flex", 1], ["height", "100%"], ["fontSize", "32rpx"], ["color", "#333333"], ["backgroundImage", "none"], ["backgroundColor", "rgba(0,0,0,0)"]]))], ["placeholder", padStyleMapOf(utsMapOf([["color", "#bbbbbb"], ["fontSize", "32rpx"]]))], ["action-btn", padStyleMapOf(utsMapOf([["paddingTop", 0], ["paddingRight", "10rpx"], ["paddingBottom", 0], ["paddingLeft", "10rpx"], ["height", "100%"], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["action-text", padStyleMapOf(utsMapOf([["fontSize", "28rpx"], ["color", "#0066CC"], ["fontWeight", "bold"]]))], ["error-msg", padStyleMapOf(utsMapOf([["fontSize", "24rpx"], ["color", "#ff4d4f"], ["marginTop", "12rpx"], ["paddingLeft", "12rpx"]]))], ["error-center", padStyleMapOf(utsMapOf([["textAlign", "center"], ["paddingLeft", 0]]))], ["strength-row", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["marginTop", "16rpx"], ["paddingTop", 0], ["paddingRight", "12rpx"], ["paddingBottom", 0], ["paddingLeft", "12rpx"]]))], ["strength-bars", padStyleMapOf(utsMapOf([["flex", 1], ["display", "flex"], ["flexDirection", "row"], ["height", "8rpx"], ["marginRight", "24rpx"]]))], ["bar", padStyleMapOf(utsMapOf([["flex", 1], ["backgroundColor", "#f0f0f0"], ["borderTopLeftRadius", "4rpx"], ["borderTopRightRadius", "4rpx"], ["borderBottomRightRadius", "4rpx"], ["borderBottomLeftRadius", "4rpx"], ["marginRight", "8rpx"]]))], ["bar-active-weak", padStyleMapOf(utsMapOf([["backgroundColor", "#ff4d4f"]]))], ["bar-active-medium", padStyleMapOf(utsMapOf([["backgroundColor", "#faad14"]]))], ["bar-active-strong", padStyleMapOf(utsMapOf([["backgroundColor", "#52c41a"]]))], ["strength-label", padStyleMapOf(utsMapOf([["fontSize", "24rpx"], ["color", "#888888"], ["width", "50rpx"], ["textAlign", "right"]]))], ["agreement-row", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "flex-start"], ["marginTop", "40rpx"], ["marginRight", 0], ["marginBottom", "24rpx"], ["marginLeft", 0]]))], ["checkbox", padStyleMapOf(utsMapOf([["width", "36rpx"], ["height", "36rpx"], ["borderTopWidth", "3rpx"], ["borderRightWidth", "3rpx"], ["borderBottomWidth", "3rpx"], ["borderLeftWidth", "3rpx"], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#d9d9d9"], ["borderRightColor", "#d9d9d9"], ["borderBottomColor", "#d9d9d9"], ["borderLeftColor", "#d9d9d9"], ["borderTopLeftRadius", "8rpx"], ["borderTopRightRadius", "8rpx"], ["borderBottomRightRadius", "8rpx"], ["borderBottomLeftRadius", "8rpx"], ["marginRight", "16rpx"], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"], ["marginTop", "4rpx"]]))], ["checkbox-checked", padStyleMapOf(utsMapOf([["backgroundColor", "#0066CC"], ["borderTopColor", "#0066CC"], ["borderRightColor", "#0066CC"], ["borderBottomColor", "#0066CC"], ["borderLeftColor", "#0066CC"]]))], ["check-mark", padStyleMapOf(utsMapOf([["color", "#ffffff"], ["fontSize", "24rpx"], ["fontWeight", "bold"]]))], ["agreement-text", padStyleMapOf(utsMapOf([["flex", 1], ["lineHeight", 1.6]]))], ["text-gray", padStyleMapOf(utsMapOf([["fontSize", "26rpx"], ["color", "#888888"]]))], ["text-link", padStyleMapOf(utsMapOf([["fontSize", "26rpx"], ["color", "#0066CC"]]))], ["bold", padStyleMapOf(utsMapOf([["fontWeight", "bold"]]))], ["primary-btn", padStyleMapOf(utsMapOf([["width", "100%"], ["height", "110rpx"], ["backgroundColor", "#0066CC"], ["color", "#ffffff"], ["borderTopLeftRadius", "24rpx"], ["borderTopRightRadius", "24rpx"], ["borderBottomRightRadius", "24rpx"], ["borderBottomLeftRadius", "24rpx"], ["fontSize", "34rpx"], ["fontWeight", "bold"], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"], ["borderTopWidth", "medium"], ["borderRightWidth", "medium"], ["borderBottomWidth", "medium"], ["borderLeftWidth", "medium"], ["borderTopStyle", "none"], ["borderRightStyle", "none"], ["borderBottomStyle", "none"], ["borderLeftStyle", "none"], ["borderTopColor", "#000000"], ["borderRightColor", "#000000"], ["borderBottomColor", "#000000"], ["borderLeftColor", "#000000"], ["boxShadow", "0 16rpx 32rpx rgba(0, 102, 204, 0.2)"], ["marginTop", "16rpx"]]))], ["primary-btn-disabled", padStyleMapOf(utsMapOf([["backgroundColor", "#a0c6ed"], ["boxShadow", "none"]]))], ["footer-link", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "center"], ["alignItems", "center"], ["marginTop", "48rpx"]]))], ["link-wrap", padStyleMapOf(utsMapOf([["paddingTop", "40rpx"], ["paddingRight", "40rpx"], ["paddingBottom", "40rpx"], ["paddingLeft", "40rpx"], ["marginLeft", "-20rpx"], ["zIndex", 10]]))]])];
+//# sourceMappingURL=register.uvue.map

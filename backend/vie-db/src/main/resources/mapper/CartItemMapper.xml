@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.vie.db.mapper.CartItemMapper">
+
+    <!-- 查询用户购物车列表（关联商品和SKU信息） -->
+    <select id="selectCartListWithProduct" resultType="java.util.Map">
+        SELECT
+            c.id AS cart_id,
+            c.user_id,
+            c.product_id,
+            c.sku_id,
+            c.quantity,
+            c.selected,
+            c.create_time,
+            p.product_name,
+            p.main_image AS product_image,
+            p.status AS product_status,
+            s.sku_name,
+            s.sku_image,
+            s.price,
+            s.stock,
+            s.status AS sku_status
+        FROM cart_item c
+        LEFT JOIN product p ON c.product_id = p.id AND p.is_deleted = 0
+        LEFT JOIN product_sku s ON c.sku_id = s.id AND s.is_deleted = 0
+        WHERE c.user_id = #{userId}
+          AND c.is_deleted = 0
+        ORDER BY c.create_time DESC
+    </select>
+
+    <!-- 根据用户ID和SKU ID列表查询购物车 -->
+    <select id="selectByUserIdAndSkuIds" resultType="com.vie.db.entity.CartItem">
+        SELECT id, user_id, product_id, sku_id, quantity, selected, create_time, update_time
+        FROM cart_item
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+          AND sku_id IN
+        <foreach collection="skuIds" item="skuId" open="(" separator="," close=")">
+            #{skuId}
+        </foreach>
+    </select>
+
+    <!-- 批量删除购物车商品（逻辑删除） -->
+    <update id="batchDelete">
+        UPDATE cart_item
+        SET is_deleted = 1, update_time = NOW()
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+          AND id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </update>
+
+    <!-- 清空用户购物车 -->
+    <update id="clearByUserId">
+        UPDATE cart_item
+        SET is_deleted = 1, update_time = NOW()
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+    </update>
+
+    <!-- 更新选中状态 -->
+    <update id="updateSelectedByUserId">
+        UPDATE cart_item
+        SET selected = #{selected}, update_time = NOW()
+        WHERE user_id = #{userId}
+          AND is_deleted = 0
+    </update>
+
+    <!-- selectByUserIdAndSkuIdIncludeDeleted 方法已移至Mapper接口使用@Select注解 -->
+
+</mapper>

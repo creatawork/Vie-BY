@@ -1,0 +1,600 @@
+<template>
+  <view class="order-page">
+    <!-- 顶部状态栏 -->
+    <view class="tab-header">
+      <view class="tab-item" :class="{ active: currentTab === 'all' }" @click="switchTab('all')">
+        <text class="tab-text" :class="{ 'tab-text--active': currentTab === 'all' }">全部</text>
+        <view class="active-line" v-if="currentTab === 'all'"></view>
+      </view>
+      <view class="tab-item" :class="{ active: currentTab === 'pending' }" @click="switchTab('pending')">
+        <text class="tab-text" :class="{ 'tab-text--active': currentTab === 'pending' }">待付款</text>
+        <view class="active-line" v-if="currentTab === 'pending'"></view>
+      </view>
+      <view class="tab-item" :class="{ active: currentTab === 'unshipped' }" @click="switchTab('unshipped')">
+        <text class="tab-text" :class="{ 'tab-text--active': currentTab === 'unshipped' }">待发货</text>
+        <view class="active-line" v-if="currentTab === 'unshipped'"></view>
+      </view>
+      <view class="tab-item" :class="{ active: currentTab === 'shipped' }" @click="switchTab('shipped')">
+        <text class="tab-text" :class="{ 'tab-text--active': currentTab === 'shipped' }">待收货</text>
+        <view class="active-line" v-if="currentTab === 'shipped'"></view>
+      </view>
+      <view class="tab-item" :class="{ active: currentTab === 'completed' }" @click="switchTab('completed')">
+        <text class="tab-text" :class="{ 'tab-text--active': currentTab === 'completed' }">已完成</text>
+        <view class="active-line" v-if="currentTab === 'completed'"></view>
+      </view>
+    </view>
+
+    <!-- 订单列表 -->
+    <scroll-view class="order-scroll" scroll-y="true" @scrolltolower="loadMore" @refresherrefresh="onRefresh" :refresher-enabled="true" :refresher-triggered="isRefreshing" :show-scrollbar="false">
+      <!-- 加载中 -->
+      <view v-if="isLoading && orders.length === 0" class="loading-state">
+        <text class="loading-text">加载中...</text>
+      </view>
+      
+      <view v-else class="order-list">
+        <view class="order-card" v-for="order in orders" :key="order.id" @click="goToDetail(order.id)">
+          <view class="card-header">
+            <text class="order-number">订单号：{{ order.orderNo }}</text>
+            <text class="order-status" :class="getStatusClass(order.status)">{{ order.statusDesc }}</text>
+          </view>
+          
+          <view class="goods-preview">
+            <view v-if="order.orderItems.length === 1" class="single-goods">
+              <image class="goods-img" :src="order.orderItems[0].productImage" mode="aspectFill"></image>
+              <view class="goods-info">
+                <text class="goods-name">{{ order.orderItems[0].productName }}</text>
+                <text class="goods-spec">{{ order.orderItems[0].skuName }}</text>
+              </view>
+              <view class="goods-price-qty">
+                <text class="price">¥{{ order.orderItems[0].price.toFixed(2) }}</text>
+                <text class="qty">x{{ order.orderItems[0].quantity }}</text>
+              </view>
+            </view>
+            <view v-else class="multi-goods">
+              <scroll-view scroll-x="true" class="goods-img-scroll" :show-scrollbar="false">
+                <view class="goods-img-list">
+                  <image v-for="(item, idx) in order.orderItems" :key="idx" class="goods-img-small" :src="item.productImage" mode="aspectFill"></image>
+                </view>
+              </scroll-view>
+              <view class="total-qty-info">
+                <text class="price">¥{{ order.payAmount.toFixed(2) }}</text>
+                <text class="qty">共{{ order.totalQuantity }}件</text>
+              </view>
+            </view>
+          </view>
+          
+          <view class="card-footer">
+            <view class="total-info" v-if="order.orderItems.length === 1">
+              <text class="label">实付</text>
+              <text class="amount">¥{{ order.payAmount.toFixed(2) }}</text>
+            </view>
+            <view class="btn-group">
+              <view class="action-btn secondary" v-if="order.status === 0" @click.stop="handleCancelOrder(order)">
+                <text class="btn-text secondary-text">取消订单</text>
+              </view>
+              <view class="action-btn primary" v-if="order.status === 0" @click.stop="handlePayOrder(order)">
+                <text class="btn-text primary-text">去支付</text>
+              </view>
+              <view class="action-btn primary" v-if="order.status === 2" @click.stop="handleConfirmReceipt(order)">
+                <text class="btn-text primary-text">确认收货</text>
+              </view>
+              <view class="action-btn secondary" v-if="order.status === 3 || order.status === 4 || order.status === 5" @click.stop="handleDeleteOrder(order)">
+                <text class="btn-text secondary-text">删除订单</text>
+              </view>
+              <view class="action-btn primary" v-if="order.status === 3 && order.reviewed != true" @click.stop="goToReview(order)">
+                <text class="btn-text primary-text">去评价</text>
+              </view>
+              <view class="action-btn primary" v-if="order.status === 3" @click.stop="buyAgain(order)">
+                <text class="btn-text primary-text">再次购买</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+      
+      <view v-if="!isLoading && orders.length === 0" class="empty-state">
+        <text class="empty-icon">📃</text>
+        <text class="empty-text">暂无相关订单</text>
+      </view>
+      
+      <view v-if="orders.length > 0" class="load-more">
+        <text class="load-more-text">{{ hasMore ? '上拉加载更多' : '没有更多了' }}</text>
+      </view>
+      
+      <view style="height: 140rpx;"></view>
+    </scroll-view>
+    
+    <BottomNav />
+  </view>
+</template>
+
+<script lang="uts">
+import BottomNav from '@/components/BottomNav.uvue'
+import { getOrderList, cancelOrder, payOrder, confirmReceive, deleteOrder, type OrderVO, type OrderItemVO, type OrderQueryParams } from '@/api/order'
+
+export default {
+  components: { BottomNav },
+  data() {
+    return {
+      currentTab: 'all',
+      isLoading: false,
+      isRefreshing: false,
+      hasMore: true,
+      pageNum: 1,
+      pageSize: 10,
+      orders: [] as OrderVO[]
+    }
+  },
+  onLoad(options) {
+    const opts = options as UTSJSONObject
+    const status = opts.get('status')
+    if (status != null) { this.currentTab = status as string }
+    this.loadOrders()
+  },
+  onShow() {
+    uni.$emit('bottomNavRefresh')
+    this.pageNum = 1
+    this.loadOrders()
+  },
+  methods: {
+    getStatusValue() : number | null {
+      const statusMap = new Map<string, number>([['pending', 0], ['unshipped', 1], ['shipped', 2], ['completed', 3]])
+      if (this.currentTab === 'all') return null
+      return statusMap.get(this.currentTab) ?? null
+    },
+    loadOrders() {
+      this.isLoading = true
+      const params : OrderQueryParams = { status: this.getStatusValue(), pageNum: this.pageNum, pageSize: this.pageSize }
+      getOrderList(params).then((res) => {
+        const data = res.data as UTSJSONObject
+        const total = (data.getNumber('total') ?? 0).toInt()
+        const orderList = this.parseOrdersFromData(data)
+        if (this.pageNum === 1) { this.orders = orderList } else { this.orders = this.orders.concat(orderList) }
+        this.hasMore = this.orders.length < total
+        this.isLoading = false
+        this.isRefreshing = false
+      }).catch((err) => {
+        console.error('获取订单列表失败:', err)
+        this.isLoading = false
+        this.isRefreshing = false
+        uni.showToast({ title: '获取订单失败', icon: 'none' })
+      })
+    },
+    parseOrdersFromData(data : UTSJSONObject) : OrderVO[] {
+      const records = data.getArray('records')
+      if (records == null) return [] as OrderVO[]
+      const orderList : OrderVO[] = []
+      for (let i = 0; i < records.length; i++) {
+        const orderObj = records[i] as UTSJSONObject
+        const itemsArr = orderObj.getArray('orderItems')
+        const orderItems : OrderItemVO[] = []
+        if (itemsArr != null) {
+          for (let j = 0; j < itemsArr.length; j++) {
+            const item = itemsArr[j] as UTSJSONObject
+            orderItems.push({
+              id: (item.getNumber('id') ?? 0).toInt(),
+              productId: (item.getNumber('productId') ?? 0).toInt(),
+              skuId: (item.getNumber('skuId') ?? 0).toInt(),
+              productName: item.getString('productName') ?? '',
+              skuName: item.getString('skuName') ?? '',
+              productImage: item.getString('productImage') ?? '',
+              price: item.getNumber('price') ?? 0,
+              quantity: (item.getNumber('quantity') ?? 0).toInt(),
+              totalPrice: item.getNumber('totalPrice') ?? 0,
+              reviewed: item.getBoolean('reviewed') ?? false
+            } as OrderItemVO)
+          }
+        }
+        orderList.push({
+          id: (orderObj.getNumber('id') ?? 0).toInt(),
+          orderNo: orderObj.getString('orderNo') ?? '',
+          totalAmount: orderObj.getNumber('totalAmount') ?? 0,
+          payAmount: orderObj.getNumber('payAmount') ?? 0,
+          freightAmount: orderObj.getNumber('freightAmount') ?? 0,
+          status: (orderObj.getNumber('status') ?? 0).toInt(),
+          statusDesc: orderObj.getString('statusDesc') ?? '',
+          receiverName: orderObj.getString('receiverName') ?? '',
+          receiverPhone: orderObj.getString('receiverPhone') ?? '',
+          receiverAddress: orderObj.getString('receiverAddress') ?? '',
+          remark: orderObj.getString('remark'),
+          payTime: orderObj.getString('payTime'),
+          deliverTime: orderObj.getString('deliverTime'),
+          receiveTime: orderObj.getString('receiveTime'),
+          cancelTime: orderObj.getString('cancelTime'),
+          cancelReason: orderObj.getString('cancelReason'),
+          createTime: orderObj.getString('createTime') ?? '',
+          orderItems: orderItems,
+          totalQuantity: (orderObj.getNumber('totalQuantity') ?? 0).toInt(),
+          reviewed: orderObj.getBoolean('reviewed') ?? false,
+          reviewCount: (orderObj.getNumber('reviewCount') ?? 0).toInt()
+        } as OrderVO)
+      }
+      return orderList
+    },
+    switchTab(tab : string) {
+      if (this.currentTab === tab) return
+      this.currentTab = tab
+      this.pageNum = 1
+      this.orders = []
+      this.loadOrders()
+    },
+    onRefresh() { this.isRefreshing = true; this.pageNum = 1; this.loadOrders() },
+    loadMore() { if (!this.hasMore || this.isLoading) return; this.pageNum++; this.loadOrders() },
+    getStatusClass(status : number) : string {
+      const classMap = new Map<number, string>([[0, 'status-pending'], [1, 'status-unshipped'], [2, 'status-shipped'], [3, 'status-completed'], [4, 'status-cancelled'], [5, 'status-closed']])
+      return classMap.get(status) ?? ''
+    },
+    goToDetail(id : number) { uni.navigateTo({ url: `/pages/order/detail?id=${id}` }) },
+    handleCancelOrder(order : OrderVO) {
+      uni.showModal({ title: '提示', content: '确定取消订单吗？', success: (res) => {
+        if (res.confirm) {
+          cancelOrder(order.id, '用户取消').then(() => { order.status = 4; order.statusDesc = '已取消'; uni.showToast({ title: '订单已取消', icon: 'success' }) }).catch((err) => { console.error('取消订单失败:', err); uni.showToast({ title: '取消失败', icon: 'none' }) })
+        }
+      }})
+    },
+    handlePayOrder(order : OrderVO) {
+      uni.navigateTo({
+        url: `/pages/order/pay?orderId=${order.id}&orderNo=${order.orderNo}&amount=${order.payAmount}`
+      })
+    },
+    handleConfirmReceipt(order : OrderVO) {
+      uni.showModal({ title: '提示', content: '确认已收到货吗？', success: (res) => {
+        if (res.confirm) {
+          confirmReceive(order.id).then(() => { order.status = 3; order.statusDesc = '已完成'; uni.showToast({ title: '确认收货成功', icon: 'success' }) }).catch((err) => { console.error('确认收货失败:', err); uni.showToast({ title: '操作失败', icon: 'none' }) })
+        }
+      }})
+    },
+    handleDeleteOrder(order : OrderVO) {
+      uni.showModal({
+        title: '提示',
+        content: '确定要删除该订单吗？',
+        success: (res) => {
+          if (res.confirm) {
+            deleteOrder(order.id).then(() => {
+              uni.showToast({ title: '删除成功', icon: 'success' })
+              this.pageNum = 1
+              this.loadOrders()
+            }).catch(() => {
+              uni.showToast({ title: '删除失败', icon: 'none' })
+            })
+          }
+        }
+      })
+    },
+    goToReview(order : OrderVO) {
+      const items = order.orderItems
+      if (items == null || items.length === 0) {
+        uni.showToast({ title: '订单商品为空', icon: 'none' })
+        return
+      }
+      let target = items[0]
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i]
+        if (it.reviewed != true) {
+          target = it
+          break
+        }
+      }
+      uni.navigateTo({
+        url: `/pages/order/review?orderId=${order.id}&productId=${target.productId}&productName=${encodeURIComponent(target.productName)}&productImage=${encodeURIComponent(target.productImage)}`
+      })
+    },
+    buyAgain(order : OrderVO) { uni.showToast({ title: '商品已加入购物车', icon: 'success' }); uni.switchTab({ url: '/pages/cart/index' }) }
+  }
+}
+</script>
+
+<style lang="scss" scoped>
+.order-page {
+  background-color: #f7f8fa;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+}
+
+.tab-header {
+  background-color: #fff;
+  display: flex;
+  flex-direction: row;
+  padding-top: var(--status-bar-height);
+  z-index: 100;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.tab-item {
+  flex: 1;
+  height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.tab-text {
+  font-size: 13px;
+  color: #666;
+}
+
+.tab-text--active {
+  color: #0066CC;
+  font-weight: 700;
+}
+
+.active-line {
+  position: absolute;
+  bottom: 0;
+  width: 24px;
+  height: 3px;
+  background-color: #0066CC;
+  border-radius: 2px;
+}
+
+.order-scroll {
+  flex: 1;
+  width: 100%;
+  height: 0;
+}
+.loading-state {
+  padding: 60px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-text {
+  font-size: 14px;
+  color: #999;
+}
+
+.order-list {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.order-card {
+  background-color: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  display: flex;
+  flex-direction: column;
+}
+
+.card-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.order-number {
+  font-size: 13px;
+  color: #666;
+}
+
+.order-status {
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.status-pending {
+  color: #ff9800;
+}
+
+.status-unshipped {
+  color: #2196f3;
+}
+
+.status-shipped {
+  color: #0066CC;
+}
+
+.status-completed {
+  color: #999;
+}
+
+.status-cancelled {
+  color: #ccc;
+}
+
+.status-closed {
+  color: #ccc;
+}
+
+.goods-preview {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.single-goods {
+  display: flex;
+  flex-direction: row;
+}
+
+.goods-img {
+  width: 70px;
+  height: 70px;
+  border-radius: 8px;
+  background-color: #f5f5f5;
+  margin-right: 12px;
+}
+
+.goods-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.goods-name {
+  font-size: 14px;
+  color: #333;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.goods-spec {
+  font-size: 12px;
+  color: #999;
+  background-color: #f5f5f5;
+  padding: 2px 6px;
+  border-radius: 4px;
+  align-self: flex-start;
+}
+
+.goods-price-qty {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 60px;
+}
+
+.price {
+  font-size: 14px;
+  color: #333;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.qty {
+  font-size: 12px;
+  color: #999;
+}
+
+.multi-goods {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.goods-img-scroll {
+  flex: 1;
+  white-space: nowrap;
+  margin-right: 12px;
+}
+
+.goods-img-list {
+  display: flex;
+  flex-direction: row;
+}
+
+.goods-img-small {
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  background-color: #f5f5f5;
+  margin-right: 8px;
+}
+
+.total-qty-info {
+  text-align: right;
+  min-width: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.card-footer {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: center;
+  border-top: 1px solid #f5f5f5;
+  padding-top: 12px;
+}
+
+.total-info {
+  margin-right: auto;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.label {
+  font-size: 12px;
+  color: #999;
+  margin-right: 4px;
+}
+
+.amount {
+  font-size: 16px;
+  font-weight: 700;
+  color: #333;
+}
+
+.btn-group {
+  display: flex;
+  flex-direction: row;
+}
+
+.action-btn {
+  padding: 0 16px;
+  height: 32px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  margin-left: 8px;
+}
+
+.secondary {
+  background-color: #fff;
+  border: 1px solid #ddd;
+}
+
+.primary {
+  background-color: #fff;
+  border: 1px solid #0066CC;
+}
+
+.btn-text {
+  font-size: 13px;
+}
+
+.secondary-text {
+  color: #666;
+}
+
+.primary-text {
+  color: #0066CC;
+}
+
+.empty-state {
+  padding: 60px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  color: #ccc;
+}
+
+.empty-text {
+  font-size: 14px;
+  color: #999;
+}
+
+.load-more {
+  padding: 20px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.load-more-text {
+  font-size: 12px;
+  color: #999;
+}
+</style>

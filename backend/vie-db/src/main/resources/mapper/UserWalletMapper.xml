@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.vie.db.mapper.UserWalletMapper">
+
+    <!-- 根据用户ID查询钱包 -->
+    <select id="selectByUserId" resultType="com.vie.db.entity.UserWallet">
+        SELECT id, user_id, balance, frozen_amount, total_recharge, total_consume, create_time, update_time
+        FROM user_wallet
+        WHERE user_id = #{userId}
+    </select>
+
+    <!-- 增加余额（充值） -->
+    <update id="increaseBalance">
+        UPDATE user_wallet
+        SET balance = balance + #{amount},
+            update_time = NOW()
+        WHERE user_id = #{userId}
+    </update>
+
+    <!-- 扣减余额（支付），只有余额足够时才扣减 -->
+    <update id="decreaseBalance">
+        UPDATE user_wallet
+        SET balance = balance - #{amount},
+            update_time = NOW()
+        WHERE user_id = #{userId}
+          AND balance >= #{amount}
+    </update>
+
+    <!-- 增加累计充值 -->
+    <update id="increaseTotalRecharge">
+        UPDATE user_wallet
+        SET total_recharge = total_recharge + #{amount},
+            update_time = NOW()
+        WHERE user_id = #{userId}
+    </update>
+
+    <!-- 增加累计消费 -->
+    <update id="increaseTotalConsume">
+        UPDATE user_wallet
+        SET total_consume = total_consume + #{amount},
+            update_time = NOW()
+        WHERE user_id = #{userId}
+    </update>
+
+</mapper>

@@ -1,0 +1,125 @@
+<template>
+  <view class="reviews-page">
+    <view class="filter-row">
+      <view class="filter-item" :class="{ active: currentRating == null }" @click="changeRating(null)">全部</view>
+      <view class="filter-item" v-for="r in [5,4,3,2,1]" :key="r" :class="{ active: currentRating === r }" @click="changeRating(r)">{{ r }}星</view>
+    </view>
+
+    <scroll-view class="list" scroll-y="true" @scrolltolower="loadMore">
+      <view v-if="reviews.length === 0 && !isLoading" class="empty">暂无评价</view>
+      <view class="item" v-for="item in reviews" :key="item.id">
+        <view class="head">
+          <text class="name">{{ item.userNickname }}</text>
+          <text class="time">{{ item.createTime }}</text>
+        </view>
+        <view class="stars">
+          <text v-for="i in 5" :key="i" class="star" :class="{ on: i <= item.rating }">★</text>
+        </view>
+        <text class="content">{{ getContentText(item.content) }}</text>
+        <view class="reply" v-if="item.replyContent">商家回复：{{ item.replyContent }}</view>
+      </view>
+      <view v-if="isLoading" class="tip">加载中...</view>
+      <view v-else-if="!hasMore && reviews.length > 0" class="tip">没有更多了</view>
+      <view style="height: 24rpx"></view>
+    </scroll-view>
+  </view>
+</template>
+
+<script lang="uts">
+import { getProductReviews, type ReviewVO } from '@/api/review'
+
+export default {
+  data() {
+    return {
+      productId: 0,
+      pageNum: 1,
+      pageSize: 10,
+      currentRating: null as number | null,
+      reviews: [] as ReviewVO[],
+      isLoading: false,
+      hasMore: true
+    }
+  },
+  onLoad(options : any) {
+    const opts = options as UTSJSONObject
+    this.productId = parseInt(opts.getString('productId') ?? '0')
+    const productName = decodeURIComponent(opts.getString('productName') ?? '')
+    if (productName != '') {
+      uni.setNavigationBarTitle({ title: `${productName}评价` })
+    }
+    this.loadReviews()
+  },
+  methods: {
+    changeRating(rating : number | null) {
+      if (this.currentRating === rating) return
+      this.currentRating = rating
+      this.pageNum = 1
+      this.reviews = []
+      this.hasMore = true
+      this.loadReviews()
+    },
+    loadReviews() {
+      if (this.isLoading || !this.hasMore) return
+      this.isLoading = true
+      getProductReviews(this.productId, this.pageNum, this.pageSize, this.currentRating).then((res) => {
+        const data = res.data as UTSJSONObject
+        const total = (data.getNumber('total') ?? 0).toInt()
+        const records = data.getArray('records')
+        const list : ReviewVO[] = []
+        if (records != null) {
+          for (let i = 0; i < records.length; i++) {
+            const it = records[i] as UTSJSONObject
+            list.push({
+              id: (it.getNumber('id') ?? 0).toInt(),
+              productId: (it.getNumber('productId') ?? 0).toInt(),
+              productName: it.getString('productName') ?? '',
+              productMainImage: it.getString('productMainImage') ?? '',
+              userId: (it.getNumber('userId') ?? 0).toInt(),
+              userNickname: it.getString('userNickname') ?? '匿名用户',
+              userAvatar: it.getString('userAvatar') ?? '',
+              orderId: (it.getNumber('orderId') ?? 0).toInt(),
+              rating: (it.getNumber('rating') ?? 5).toInt(),
+              content: it.getString('content') ?? '',
+              images: it.getString('images') ?? '',
+              replyContent: it.getString('replyContent'),
+              replyTime: it.getString('replyTime'),
+              status: (it.getNumber('status') ?? 1).toInt(),
+              createTime: it.getString('createTime') ?? ''
+            } as ReviewVO)
+          }
+        }
+        this.reviews = this.pageNum === 1 ? list : this.reviews.concat(list)
+        this.hasMore = this.reviews.length < total
+        this.pageNum++
+        this.isLoading = false
+      }).catch((err) => {
+        console.error('获取评价列表失败:', err)
+        this.isLoading = false
+        uni.showToast({ title: '加载失败', icon: 'none' })
+      })
+    },
+    getContentText(content : string) : string {
+      return content == '' ? '用户未填写评价内容' : content
+    },
+    loadMore() { this.loadReviews() }
+  }
+}
+</script>
+
+<style lang="scss" scoped>
+.reviews-page { background: #f7f8fa; height: 100%; display: flex; flex-direction: column; }
+.filter-row { display: flex; flex-direction: row; padding: 20rpx; background: #fff; }
+.filter-item { margin-right: 16rpx; padding: 8rpx 16rpx; border-radius: 20rpx; background: #f2f3f5; color: #666; font-size: 24rpx; }
+.filter-item.active { background: #0066CC; color: #fff; }
+.list { flex: 1; padding: 20rpx; box-sizing: border-box; }
+.item { background: #fff; border-radius: 12rpx; padding: 20rpx; margin-bottom: 16rpx; }
+.head { display: flex; flex-direction: row; justify-content: space-between; margin-bottom: 8rpx; }
+.name { font-size: 26rpx; color: #333; }
+.time { font-size: 22rpx; color: #999; }
+.stars { margin-bottom: 10rpx; }
+.star { color: #ddd; font-size: 24rpx; }
+.star.on { color: #ff9900; }
+.content { font-size: 26rpx; color: #333; line-height: 1.5; }
+.reply { margin-top: 12rpx; background: #f8f8f8; padding: 10rpx; border-radius: 8rpx; font-size: 24rpx; color: #666; }
+.empty, .tip { text-align: center; color: #999; font-size: 24rpx; padding: 30rpx 0; }
+</style>

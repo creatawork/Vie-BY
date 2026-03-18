@@ -1,0 +1,350 @@
+
+import { getCart, type CartItemVO } from '@/api/cart'
+import { createOrder, type OrderCreateParams, type DirectBuyItem } from '@/api/order'
+	import { getDefaultAddress } from '@/api/address'
+
+type AddressType = { __$originalPosition?: UTSSourceMapPosition<"AddressType", "pages/order/checkout.uvue", 101, 6>;
+  id : number
+  receiverName : string
+  receiverPhone : string
+  province : string
+  city : string
+  district : string
+  detailAddress : string
+  fullAddress : string
+  isDefault : number
+}
+
+type OrderGoodsType = { __$originalPosition?: UTSSourceMapPosition<"OrderGoodsType", "pages/order/checkout.uvue", 113, 6>;
+  cartId : number
+  productId : number
+  skuId : number
+  productName : string
+  productImage : string
+  skuName : string
+  price : number
+  quantity : number
+}
+
+const __sfc__ = defineComponent({
+  data() {
+    return {
+      isLoading: true,
+      isSubmitting: false,
+      orderType: 'cart',
+      cartItemIds: [] as number[],
+      directBuyItem: null as DirectBuyItem | null,
+      orderGoods: [] as OrderGoodsType[],
+      selectedAddress: null as AddressType | null,
+      remark: '',
+      freightAmount: 0
+    }
+  },
+
+  computed: {
+    totalGoodsAmount() : number {
+      return this.orderGoods.reduce((sum : number, item : OrderGoodsType) : number => sum + item.price * item.quantity, 0)
+    },
+    totalPayAmount() : number {
+      return this.totalGoodsAmount + this.freightAmount
+    },
+    canSubmit() : boolean {
+      return this.selectedAddress != null && this.orderGoods.length > 0
+    }
+  },
+  onShow() {
+    uni.$on('addressSelected', (addr : any) => {
+      const data = addr as UTSJSONObject
+      this.selectedAddress = {
+        id: (data.getNumber('id') ?? 0).toInt(),
+        receiverName: data.getString('receiverName') ?? '',
+        receiverPhone: data.getString('receiverPhone') ?? '',
+        province: data.getString('province') ?? '',
+        city: data.getString('city') ?? '',
+        district: data.getString('district') ?? '',
+        detailAddress: data.getString('detailAddress') ?? '',
+        fullAddress: data.getString('fullAddress') ?? '',
+        isDefault: (data.getNumber('isDefault') ?? 0).toInt()
+      } as AddressType
+    })
+  },
+  onUnload() {
+    uni.$off('addressSelected')
+  },
+  onLoad(options : any) {
+    const opts = options as UTSJSONObject
+    const type = opts.get('type') as string | null
+    if (type === 'direct') {
+      this.orderType = 'direct'
+      const productIdStr = opts.get('productId')
+      const skuIdStr = opts.get('skuId')
+      const quantityStr = opts.get('quantity')
+      const productNameStr = opts.get('productName')
+      const skuNameStr = opts.get('skuName')
+      const priceStr = opts.get('price')
+      const productImageStr = opts.get('productImage')
+
+      const productId = parseInt(productIdStr != null ? productIdStr as string : '0')
+      const skuId = parseInt(skuIdStr != null ? skuIdStr as string : '0')
+      const quantity = parseInt(quantityStr != null ? quantityStr as string : '1')
+      const price = parseFloat(priceStr != null ? priceStr as string : '0')
+
+      let productName = ''
+      let skuName = ''
+      let productImage = ''
+      if (productNameStr != null) {
+        const decoded = UTSAndroid.consoleDebugError(decodeURIComponent(productNameStr as string), " at pages/order/checkout.uvue:191")
+        productName = decoded != null ? decoded : ''
+      }
+      if (skuNameStr != null) {
+        const decoded = UTSAndroid.consoleDebugError(decodeURIComponent(skuNameStr as string), " at pages/order/checkout.uvue:195")
+        skuName = decoded != null ? decoded : ''
+      }
+      if (productImageStr != null) {
+        const decoded = UTSAndroid.consoleDebugError(decodeURIComponent(productImageStr as string), " at pages/order/checkout.uvue:199")
+        productImage = decoded != null ? decoded : ''
+      }
+
+      this.directBuyItem = { productId: productId, skuId: skuId, quantity: quantity }
+      this.orderGoods = [{
+        cartId: 0, productId: productId, skuId: skuId, productName: productName,
+        productImage: productImage, skuName: skuName, price: price, quantity: quantity
+      } as OrderGoodsType]
+      this.isLoading = false
+    } else {
+      this.orderType = 'cart'
+      const cartIds = opts.get('cartIds') as string | null
+      if (cartIds != null && cartIds !== '') {
+        this.cartItemIds = cartIds.split(',').map((id : string) : number => parseInt(id))
+      }
+      this.loadCartGoods()
+    }
+    this.loadDefaultAddress()
+  },
+  methods: {
+    goBack() { uni.navigateBack() },
+    loadCartGoods() {
+      this.isLoading = true
+      getCart().then((res) => {
+        const data = res.data as UTSJSONObject
+        const itemsArr = data.getArray('items')
+        const goods : OrderGoodsType[] = []
+        if (itemsArr != null) {
+          for (let i = 0; i < itemsArr.length; i++) {
+            const item = itemsArr[i] as UTSJSONObject
+            const cartId = (item.getNumber('cartId') ?? 0).toInt()
+            if (this.cartItemIds.includes(cartId)) {
+              goods.push({
+                cartId: cartId,
+                productId: (item.getNumber('productId') ?? 0).toInt(),
+                skuId: (item.getNumber('skuId') ?? 0).toInt(),
+                productName: item.getString('productName') ?? '',
+                productImage: item.getString('productImage') ?? '',
+                skuName: item.getString('skuName') ?? '',
+                price: item.getNumber('price') ?? 0,
+                quantity: (item.getNumber('quantity') ?? 0).toInt()
+              } as OrderGoodsType)
+            }
+          }
+        }
+        this.orderGoods = goods
+        this.isLoading = false
+      }).catch((err) => {
+        console.error('获取购物车失败:', err, " at pages/order/checkout.uvue:248")
+        this.isLoading = false
+        uni.showToast({ title: '加载失败', icon: 'none' })
+      })
+    },
+
+    loadDefaultAddress() {
+      getDefaultAddress().then((res) => {
+        if (res.code === 200) {
+          const data = res.data as UTSJSONObject | null
+          if (data != null) {
+            this.selectedAddress = {
+              id: (data.getNumber('id') ?? 0).toInt(),
+              receiverName: data.getString('receiverName') ?? '',
+              receiverPhone: data.getString('receiverPhone') ?? '',
+              province: data.getString('province') ?? '',
+              city: data.getString('city') ?? '',
+              district: data.getString('district') ?? '',
+              detailAddress: data.getString('detailAddress') ?? '',
+              fullAddress: data.getString('fullAddress') ?? '',
+              isDefault: (data.getNumber('isDefault') ?? 0).toInt()
+            } as AddressType
+          } else {
+            this.selectedAddress = null
+          }
+        }
+      }).catch((err) => {
+        console.error('获取默认地址失败:', err, " at pages/order/checkout.uvue:275")
+      })
+    },
+    selectAddress() {
+      uni.navigateTo({ url: '/pages/user/address-list?select=1' })
+    },
+    submitOrder() {
+      if (!this.canSubmit) {
+        if (this.selectedAddress == null) {
+          uni.showToast({ title: '请选择收货地址', icon: 'none' })
+        }
+        return
+      }
+      this.isSubmitting = true
+      const address = this.selectedAddress as AddressType
+      const params : OrderCreateParams = {
+        cartItemIds: this.orderType === 'cart' ? this.cartItemIds : null,
+        directBuyItem: this.orderType === 'direct' ? this.directBuyItem : null,
+        receiverName: address.receiverName,
+        receiverPhone: address.receiverPhone,
+        receiverAddress: address.fullAddress,
+        receiverProvince: address.province,
+        receiverCity: address.city,
+        receiverDistrict: address.district,
+        remark: this.remark !== '' ? this.remark : null
+      }
+      createOrder(params).then((res) => {
+        this.isSubmitting = false
+        const orderNo = res.data as string
+        uni.showToast({ title: '订单创建成功', icon: 'success' })
+        setTimeout(() => {
+          uni.redirectTo({ url: '/pages/order/list?status=pending' })
+        }, 1500)
+      }).catch((err) => {
+        this.isSubmitting = false
+        console.error('创建订单失败:', err, " at pages/order/checkout.uvue:310")
+        uni.showToast({ title: '创建订单失败', icon: 'none' })
+      })
+    }
+  }
+})
+
+export default __sfc__
+function GenPagesOrderCheckoutRender(this: InstanceType<typeof __sfc__>): any | null {
+const _ctx = this
+const _cache = this.$.renderCache
+  return createElementVNode("view", utsMapOf({ class: "checkout-page" }), [
+    createElementVNode("view", utsMapOf({ class: "header" }), [
+      createElementVNode("view", utsMapOf({
+        class: "back-btn",
+        onClick: _ctx.goBack
+      }), [
+        createElementVNode("text", utsMapOf({ class: "back-icon" }), "←")
+      ], 8 /* PROPS */, ["onClick"]),
+      createElementVNode("text", utsMapOf({ class: "page-title" }), "确认订单"),
+      createElementVNode("view", utsMapOf({ class: "placeholder" }))
+    ]),
+    isTrue(_ctx.isLoading)
+      ? createElementVNode("view", utsMapOf({
+          key: 0,
+          class: "loading-state"
+        }), [
+          createElementVNode("text", utsMapOf({ class: "loading-text" }), "加载中...")
+        ])
+      : createElementVNode("scroll-view", utsMapOf({
+          key: 1,
+          class: "content-scroll",
+          "scroll-y": "true"
+        }), [
+          createElementVNode("view", utsMapOf({
+            class: "address-section",
+            onClick: _ctx.selectAddress
+          }), [
+            _ctx.selectedAddress != null
+              ? createElementVNode("view", utsMapOf({
+                  key: 0,
+                  class: "address-card"
+                }), [
+                  createElementVNode("view", utsMapOf({ class: "address-icon" }), "📍"),
+                  createElementVNode("view", utsMapOf({ class: "address-info" }), [
+                    createElementVNode("view", utsMapOf({ class: "address-top" }), [
+                      createElementVNode("text", utsMapOf({ class: "receiver-name" }), toDisplayString(_ctx.selectedAddress!.receiverName), 1 /* TEXT */),
+                      createElementVNode("text", utsMapOf({ class: "receiver-phone" }), toDisplayString(_ctx.selectedAddress!.receiverPhone), 1 /* TEXT */),
+                      _ctx.selectedAddress!.isDefault === 1
+                        ? createElementVNode("view", utsMapOf({
+                            key: 0,
+                            class: "default-tag"
+                          }), [
+                            createElementVNode("text", utsMapOf({ class: "default-tag-text" }), "默认")
+                          ])
+                        : createCommentVNode("v-if", true)
+                    ]),
+                    createElementVNode("text", utsMapOf({ class: "address-detail" }), toDisplayString(_ctx.selectedAddress!.fullAddress), 1 /* TEXT */)
+                  ]),
+                  createElementVNode("text", utsMapOf({ class: "arrow-icon" }), ">")
+                ])
+              : createElementVNode("view", utsMapOf({
+                  key: 1,
+                  class: "no-address"
+                }), [
+                  createElementVNode("text", utsMapOf({ class: "no-address-icon" }), "+"),
+                  createElementVNode("text", utsMapOf({ class: "no-address-text" }), "请添加收货地址")
+                ])
+          ], 8 /* PROPS */, ["onClick"]),
+          createElementVNode("view", utsMapOf({ class: "goods-section" }), [
+            createElementVNode("view", utsMapOf({ class: "section-header" }), [
+              createElementVNode("text", utsMapOf({ class: "shop-icon" }), "🏪"),
+              createElementVNode("text", utsMapOf({ class: "shop-name" }), "鲜农优选直营店")
+            ]),
+            createElementVNode("view", utsMapOf({ class: "goods-list" }), [
+              createElementVNode(Fragment, null, RenderHelpers.renderList(_ctx.orderGoods, (item, index, __index, _cached): any => {
+                return createElementVNode("view", utsMapOf({
+                  class: "goods-item",
+                  key: index
+                }), [
+                  createElementVNode("image", utsMapOf({
+                    class: "goods-image",
+                    src: item.productImage,
+                    mode: "aspectFill"
+                  }), null, 8 /* PROPS */, ["src"]),
+                  createElementVNode("view", utsMapOf({ class: "goods-info" }), [
+                    createElementVNode("text", utsMapOf({ class: "goods-name" }), toDisplayString(item.productName), 1 /* TEXT */),
+                    createElementVNode("text", utsMapOf({ class: "goods-spec" }), toDisplayString(item.skuName), 1 /* TEXT */),
+                    createElementVNode("view", utsMapOf({ class: "goods-bottom" }), [
+                      createElementVNode("text", utsMapOf({ class: "goods-price" }), "¥" + toDisplayString(item.price.toFixed(2)), 1 /* TEXT */),
+                      createElementVNode("text", utsMapOf({ class: "goods-qty" }), "x" + toDisplayString(item.quantity), 1 /* TEXT */)
+                    ])
+                  ])
+                ])
+              }), 128 /* KEYED_FRAGMENT */)
+            ])
+          ]),
+          createElementVNode("view", utsMapOf({ class: "remark-section" }), [
+            createElementVNode("text", utsMapOf({ class: "remark-label" }), "订单备注"),
+            createElementVNode("input", utsMapOf({
+              class: "remark-input",
+              type: "text",
+              modelValue: _ctx.remark,
+              onInput: ($event: InputEvent) => {(_ctx.remark) = $event.detail.value},
+              placeholder: "选填，请输入备注信息",
+              "placeholder-class": "remark-placeholder"
+            }), null, 40 /* PROPS, NEED_HYDRATION */, ["modelValue", "onInput"])
+          ]),
+          createElementVNode("view", utsMapOf({ class: "price-section" }), [
+            createElementVNode("view", utsMapOf({ class: "price-row" }), [
+              createElementVNode("text", utsMapOf({ class: "price-label" }), "商品金额"),
+              createElementVNode("text", utsMapOf({ class: "price-value" }), "¥" + toDisplayString(_ctx.totalGoodsAmount.toFixed(2)), 1 /* TEXT */)
+            ]),
+            createElementVNode("view", utsMapOf({ class: "price-row" }), [
+              createElementVNode("text", utsMapOf({ class: "price-label" }), "运费"),
+              createElementVNode("text", utsMapOf({ class: "price-value" }), "¥" + toDisplayString(_ctx.freightAmount.toFixed(2)), 1 /* TEXT */)
+            ])
+          ]),
+          createElementVNode("view", utsMapOf({
+            style: normalizeStyle(utsMapOf({"height":"140rpx"}))
+          }), null, 4 /* STYLE */)
+        ]),
+    createElementVNode("view", utsMapOf({ class: "bottom-bar" }), [
+      createElementVNode("view", utsMapOf({ class: "total-info" }), [
+        createElementVNode("text", utsMapOf({ class: "total-label" }), "合计："),
+        createElementVNode("text", utsMapOf({ class: "total-price" }), "¥" + toDisplayString(_ctx.totalPayAmount.toFixed(2)), 1 /* TEXT */)
+      ]),
+      createElementVNode("button", utsMapOf({
+        class: "submit-btn",
+        disabled: !_ctx.canSubmit || _ctx.isSubmitting,
+        onClick: _ctx.submitOrder
+      }), toDisplayString(_ctx.isSubmitting ? '提交中...' : '提交订单'), 9 /* TEXT, PROPS */, ["disabled", "onClick"])
+    ])
+  ])
+}
+const GenPagesOrderCheckoutStyles = [utsMapOf([["checkout-page", padStyleMapOf(utsMapOf([["backgroundColor", "#f5f5f5"], ["display", "flex"], ["flexDirection", "column"], ["flex", 1]]))], ["header", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["paddingTop", CSS_VAR_STATUS_BAR_HEIGHT], ["paddingRight", 16], ["paddingBottom", 12], ["paddingLeft", 16], ["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["justifyContent", "space-between"]]))], ["back-btn", padStyleMapOf(utsMapOf([["width", 40]]))], ["back-icon", padStyleMapOf(utsMapOf([["fontSize", 20], ["color", "#333333"]]))], ["page-title", padStyleMapOf(utsMapOf([["fontSize", 17], ["fontWeight", "700"], ["color", "#333333"]]))], ["placeholder", padStyleMapOf(utsMapOf([["width", 40]]))], ["loading-state", padStyleMapOf(utsMapOf([["flex", 1], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["loading-text", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#999999"]]))], ["content-scroll", padStyleMapOf(utsMapOf([["flex", 1]]))], ["address-section", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["marginTop", 12], ["marginRight", 12], ["marginBottom", 12], ["marginLeft", 12], ["borderTopLeftRadius", 12], ["borderTopRightRadius", 12], ["borderBottomRightRadius", 12], ["borderBottomLeftRadius", 12], ["paddingTop", 16], ["paddingRight", 16], ["paddingBottom", 16], ["paddingLeft", 16]]))], ["address-card", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"]]))], ["address-icon", padStyleMapOf(utsMapOf([["fontSize", 24], ["marginRight", 12]]))], ["address-info", padStyleMapOf(utsMapOf([["flex", 1]]))], ["address-top", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["marginBottom", 8]]))], ["receiver-name", padStyleMapOf(utsMapOf([["fontSize", 16], ["fontWeight", "700"], ["color", "#333333"], ["marginRight", 12]]))], ["receiver-phone", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#666666"], ["marginRight", 8]]))], ["default-tag", padStyleMapOf(utsMapOf([["backgroundColor", "#0066CC"], ["paddingTop", 2], ["paddingRight", 6], ["paddingBottom", 2], ["paddingLeft", 6], ["borderTopLeftRadius", 4], ["borderTopRightRadius", 4], ["borderBottomRightRadius", 4], ["borderBottomLeftRadius", 4]]))], ["default-tag-text", padStyleMapOf(utsMapOf([["fontSize", 10], ["color", "#ffffff"]]))], ["address-detail", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#666666"], ["lineHeight", 1.4]]))], ["arrow-icon", padStyleMapOf(utsMapOf([["fontSize", 16], ["color", "#cccccc"]]))], ["no-address", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["justifyContent", "center"], ["paddingTop", 20], ["paddingRight", 0], ["paddingBottom", 20], ["paddingLeft", 0]]))], ["no-address-icon", padStyleMapOf(utsMapOf([["fontSize", 24], ["color", "#0066CC"], ["marginRight", 8]]))], ["no-address-text", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#0066CC"]]))], ["goods-section", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["marginTop", 0], ["marginRight", 12], ["marginBottom", 12], ["marginLeft", 12], ["borderTopLeftRadius", 12], ["borderTopRightRadius", 12], ["borderBottomRightRadius", 12], ["borderBottomLeftRadius", 12], ["paddingTop", 16], ["paddingRight", 16], ["paddingBottom", 16], ["paddingLeft", 16]]))], ["section-header", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["marginBottom", 16], ["paddingBottom", 12], ["borderBottomWidth", 1], ["borderBottomStyle", "solid"], ["borderBottomColor", "#f5f5f5"]]))], ["shop-icon", padStyleMapOf(utsMapOf([["fontSize", 16], ["marginRight", 8]]))], ["shop-name", padStyleMapOf(utsMapOf([["fontSize", 14], ["fontWeight", "700"], ["color", "#333333"]]))], ["goods-item", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["paddingTop", 12], ["paddingRight", 0], ["paddingBottom", 12], ["paddingLeft", 0], ["borderBottomWidth", 1], ["borderBottomStyle", "solid"], ["borderBottomColor", "#f5f5f5"]]))], ["goods-image", padStyleMapOf(utsMapOf([["width", 80], ["height", 80], ["borderTopLeftRadius", 8], ["borderTopRightRadius", 8], ["borderBottomRightRadius", 8], ["borderBottomLeftRadius", 8], ["marginRight", 12], ["backgroundColor", "#f5f5f5"]]))], ["goods-info", padStyleMapOf(utsMapOf([["flex", 1], ["display", "flex"], ["flexDirection", "column"], ["justifyContent", "space-between"]]))], ["goods-name", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#333333"], ["lineHeight", 1.4], ["marginBottom", 4]]))], ["goods-spec", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"], ["marginBottom", 8]]))], ["goods-bottom", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"], ["alignItems", "center"]]))], ["goods-price", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#ff4d4f"], ["fontWeight", "700"]]))], ["goods-qty", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"]]))], ["remark-section", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["marginTop", 0], ["marginRight", 12], ["marginBottom", 12], ["marginLeft", 12], ["borderTopLeftRadius", 12], ["borderTopRightRadius", 12], ["borderBottomRightRadius", 12], ["borderBottomLeftRadius", 12], ["paddingTop", 16], ["paddingRight", 16], ["paddingBottom", 16], ["paddingLeft", 16], ["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"]]))], ["remark-label", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#333333"], ["marginRight", 12], ["whiteSpace", "nowrap"]]))], ["remark-input", padStyleMapOf(utsMapOf([["flex", 1], ["fontSize", 14], ["color", "#333333"]]))], ["price-section", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["marginTop", 0], ["marginRight", 12], ["marginBottom", 12], ["marginLeft", 12], ["borderTopLeftRadius", 12], ["borderTopRightRadius", 12], ["borderBottomRightRadius", 12], ["borderBottomLeftRadius", 12], ["paddingTop", 16], ["paddingRight", 16], ["paddingBottom", 16], ["paddingLeft", 16]]))], ["price-row", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"], ["alignItems", "center"], ["marginBottom", 12]]))], ["price-label", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#666666"]]))], ["price-value", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#333333"]]))], ["bottom-bar", padStyleMapOf(utsMapOf([["position", "fixed"], ["bottom", 0], ["left", 0], ["right", 0], ["backgroundColor", "#ffffff"], ["paddingTop", 12], ["paddingRight", 16], ["paddingBottom", 30], ["paddingLeft", 16], ["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["justifyContent", "space-between"], ["boxShadow", "0 -2px 8px rgba(0, 0, 0, 0.05)"]]))], ["total-info", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"]]))], ["total-label", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#333333"]]))], ["total-price", padStyleMapOf(utsMapOf([["fontSize", 20], ["fontWeight", "700"], ["color", "#ff4d4f"]]))], ["submit-btn", padStyleMapOf(utsMapOf([["backgroundColor", "#0066CC"], ["color", "#ffffff"], ["fontSize", 16], ["fontWeight", "700"], ["paddingTop", 0], ["paddingRight", 40], ["paddingBottom", 0], ["paddingLeft", 40], ["height", 44], ["lineHeight", "44px"], ["borderTopLeftRadius", 22], ["borderTopRightRadius", 22], ["borderBottomRightRadius", 22], ["borderBottomLeftRadius", 22], ["borderTopWidth", "medium"], ["borderRightWidth", "medium"], ["borderBottomWidth", "medium"], ["borderLeftWidth", "medium"], ["borderTopStyle", "none"], ["borderRightStyle", "none"], ["borderBottomStyle", "none"], ["borderLeftStyle", "none"], ["borderTopColor", "#000000"], ["borderRightColor", "#000000"], ["borderBottomColor", "#000000"], ["borderLeftColor", "#000000"]]))]])]

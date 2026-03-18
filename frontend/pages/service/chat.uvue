@@ -1,0 +1,593 @@
+<template>
+	<view class="chat-container">
+		<!-- Message List -->
+		<scroll-view
+			class="message-list"
+			scroll-y="true"
+			:scroll-top="scrollTop"
+			:scroll-into-view="lastMsgId"
+		>
+			<view class="time-divider">
+				<text class="time-text">{{ formatTime(new Date()) }}</text>
+			</view>
+
+			<view
+				class="message-item"
+				v-for="(msg, index) in messages"
+				:key="msg.id"
+				:id="msg.id"
+				:class="{ 'user-msg': msg.isUser, 'service-msg': !msg.isUser }"
+			>
+				<image
+					class="avatar"
+					:class="{ 'user-avatar': msg.isUser, 'service-avatar': !msg.isUser }"
+					:src="msg.isUser ? userAvatar : serviceAvatar"
+					mode="aspectFill"
+				/>
+				<view class="bubble-wrapper">
+					<view
+						class="bubble"
+						:class="{ 'user-bubble': msg.isUser, 'service-bubble': !msg.isUser }"
+						v-if="getDisplayContent(msg) != ''"
+					>
+						<text class="msg-content" :class="{ 'user-text': msg.isUser, 'service-text': !msg.isUser }">{{ getDisplayContent(msg) }}</text>
+					</view>
+					<view class="product-list" v-if="!msg.isUser && getProducts(msg).length > 0">
+						<view
+							class="product-card"
+							v-for="(item, pIndex) in getProducts(msg)"
+							:key="msg.id + '-' + pIndex"
+							@tap="handleProductTap(item)"
+						>
+							<image class="product-image" :src="item.mainImage" mode="aspectFill" />
+							<view class="product-info">
+								<text class="product-name">{{ item.productName }}</text>
+								<text class="product-desc">{{ item.description }}</text>
+								<view class="product-price">
+									<text class="price-label">¥</text>
+									<text class="price-value">{{ item.currentPrice }}</text>
+								</view>
+							</view>
+						</view>
+					</view>
+				</view>
+			</view>
+
+			<view class="typing-indicator" v-if="isTyping">
+				<text class="typing-text">对方正在输入...</text>
+			</view>
+
+			<view class="bottom-spacer"></view>
+		</scroll-view>
+
+		<!-- Input Area -->
+		<view class="input-area">
+			<input
+				class="input-box"
+				type="text"
+				v-model="inputText"
+				placeholder="请输入您的问题..."
+				confirm-type="send"
+				@confirm="sendMessage"
+			/>
+			<view class="action-group">
+				<button
+					class="send-btn"
+					:disabled="isSendDisabled()"
+					@tap="sendMessage"
+				>
+					发送
+				</button>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script lang="uts">
+import { chatWithAiStream, type AiStreamHandlers } from '@/api/ai'
+
+type ProductCard = {
+	productId : number
+	productName : string
+	mainImage : string
+	currentPrice : number
+	description : string
+	detailUrl : string
+}
+
+type Message = {
+	id : string
+	content : string
+	isUser : boolean
+	timestamp : number
+	products : ProductCard[] | null
+}
+
+export default {
+	data() {
+		return {
+			messages: [] as Message[],
+			inputText: '',
+			scrollTop: 0,
+			lastMsgId: '',
+			isTyping: false,
+			isStreaming: false,
+			streamTask: null as any | null,
+			streamMessageId: '' as string,
+			sessionId: null as string | null,
+			userAvatar: '/static/logo.png', // 实际应从用户信息获取
+			serviceAvatar: '/static/logo.png' // 应该有个客服头像
+		}
+	},
+	onLoad() {
+		// 发送欢迎语
+		this.addServiceMessage('您好！我是您的专属客服，请问有什么可以帮您？', null)
+	},
+	methods: {
+		// 检查发送按钮是否应该禁用
+		isSendDisabled() : boolean {
+			const trimmed = this.inputText.trim()
+			return trimmed == ''
+		},
+		handleBack() {
+			uni.navigateBack()
+		},
+		formatTime(date : Date) : string {
+			const hours = date.getHours().toString().padStart(2, '0')
+			const minutes = date.getMinutes().toString().padStart(2, '0')
+			return `${hours}:${minutes}`
+		},
+		scrollToBottom() {
+			setTimeout(() => {
+				if (this.messages.length > 0) {
+					this.lastMsgId = this.messages[this.messages.length - 1].id
+					// 也可以使用 scrollTop，但 scroll-into-view 更方便
+				}
+			}, 100)
+		},
+		sendMessage() {
+			const text = this.inputText.trim()
+			if (text == '') return
+
+			// 添加用户消息
+			this.addUserMessage(text)
+			this.inputText = ''
+
+			this.stopStreaming()
+
+			// 调用 AI 客服回复（流式）
+			this.isTyping = true
+			this.isStreaming = true
+			const serviceMsgId = this.addServiceStreamingMessage('')
+			this.streamMessageId = serviceMsgId
+
+			const handlers : AiStreamHandlers = {
+				onChunk: (payload : any) => {
+					const payloadObj = payload as UTSJSONObject
+					let data = payloadObj.get('data') as UTSJSONObject | null
+					if (data == null) {
+						data = payloadObj
+					}
+					const code = payloadObj.getNumber('code') ?? 200
+					if (data == null) {
+						return
+					}
+					if (payloadObj.get('code') != null && code != 200) {
+						return
+					}
+					const session = data.getString('sessionId')
+					if (session != null && session != '') {
+						this.sessionId = session
+					}
+					const answerChunk = data.getString('answer') ?? ''
+					const products = this.parseProducts(data)
+					this.appendServiceMessage(serviceMsgId, answerChunk, products)
+				},
+				onError: (error : any) => {
+					const message = this.safeErrorMessage(error)
+					uni.showToast({ title: message, icon: 'none' })
+					this.finishStreamingWithFallback(serviceMsgId)
+				},
+				onComplete: () => {
+					this.finishStreaming(serviceMsgId)
+				}
+			}
+			this.streamTask = chatWithAiStream(text, this.sessionId, handlers)
+		},
+		addUserMessage(content : string) {
+			const msg : Message = {
+				id: 'msg-' + Date.now(),
+				content: content,
+				isUser: true,
+				timestamp: Date.now(),
+				products: null
+			}
+			this.messages.push(msg)
+			this.scrollToBottom()
+		},
+		addServiceMessage(content : string, products : ProductCard[] | null) {
+			const msg : Message = {
+				id: 'msg-' + Date.now(),
+				content: content,
+				isUser: false,
+				timestamp: Date.now(),
+				products: products
+			}
+			this.messages.push(msg)
+			this.scrollToBottom()
+		},
+		addServiceStreamingMessage(content : string) : string {
+			const msg : Message = {
+				id: 'msg-' + Date.now(),
+				content: content,
+				isUser: false,
+				timestamp: Date.now(),
+				products: null
+			}
+			this.messages.push(msg)
+			this.scrollToBottom()
+			return msg.id
+		},
+		appendServiceMessage(messageId : string, chunk : string, products : ProductCard[] | null) {
+			for (let i = 0; i < this.messages.length; i++) {
+				const msg = this.messages[i]
+				if (msg.id == messageId) {
+					msg.content = msg.content + chunk
+					if (products != null && products.length > 0) {
+						msg.products = this.mergeProducts(msg.products, products)
+					}
+					break
+				}
+			}
+			this.scrollToBottom()
+		},
+		finishStreaming(messageId : string) {
+			this.isTyping = false
+			this.isStreaming = false
+			this.streamTask = null
+			this.streamMessageId = messageId
+		},
+		finishStreamingWithFallback(messageId : string) {
+			let hasContent = false
+			for (let i = 0; i < this.messages.length; i++) {
+				const msg = this.messages[i]
+				if (msg.id == messageId) {
+					hasContent = msg.content.trim() != ''
+					if (!hasContent) {
+						msg.content = '客服暂时无法回答，请稍后再试。'
+					}
+					break
+				}
+			}
+			this.finishStreaming(messageId)
+		},
+		stopStreaming() {
+			const task = this.streamTask as UTSJSONObject | null
+			if (task != null) {
+				if (task.get('abort') != null) {
+					const abortFn = task.get('abort') as () => void
+					abortFn()
+				}
+			}
+			this.isStreaming = false
+			this.isTyping = false
+			this.streamTask = null
+		},
+		parseProducts(data : UTSJSONObject) : ProductCard[] | null {
+			const productsArray = data.getArray('products')
+			if (productsArray == null || productsArray.length == 0) {
+				return null
+			}
+			const products : ProductCard[] = []
+			for (let i = 0; i < productsArray.length; i++) {
+				const item = productsArray[i] as UTSJSONObject
+				products.push({
+					productId: item.getNumber('productId') ?? 0,
+					productName: item.getString('productName') ?? '',
+					mainImage: item.getString('mainImage') ?? '',
+					currentPrice: item.getNumber('currentPrice') ?? 0,
+					description: item.getString('description') ?? '',
+					detailUrl: item.getString('detailUrl') ?? ''
+				})
+			}
+			return products.length > 0 ? products : null
+		},
+			getProducts(message : Message) : ProductCard[] {
+				return message.products ?? []
+			},
+			safeErrorMessage(error : any | null) : string {
+				if (error == null) {
+					return '客服开小差了'
+				}
+				const message = error.toString()
+				if (message != null && message != '') {
+					return message
+				}
+				return '客服开小差了'
+			},
+			getDisplayContent(message : Message) : string {
+				if (message.isUser) {
+					return message.content
+				}
+				const products = message.products
+				if (products == null || products.length == 0) {
+					return message.content
+				}
+				return ''
+			},
+			mergeProducts(existing : ProductCard[] | null, incoming : ProductCard[]) : ProductCard[] {
+				const merged : ProductCard[] = []
+				const seen : Map<number, boolean> = new Map<number, boolean>()
+				if (existing != null) {
+					for (let i = 0; i < existing.length; i++) {
+						const item = existing[i]
+						merged.push(item)
+						seen.set(item.productId, true)
+					}
+				}
+				for (let i = 0; i < incoming.length; i++) {
+					const item = incoming[i]
+					if (!seen.has(item.productId)) {
+						merged.push(item)
+						seen.set(item.productId, true)
+					}
+				}
+				return merged
+			},
+			handleProductTap(product : ProductCard) {
+				const detailUrl = product.detailUrl
+				if (detailUrl != null && detailUrl != '' && detailUrl.startsWith('/pages/')) {
+					uni.navigateTo({
+						url: detailUrl,
+						fail: () => {
+							this.navigateToProductDetail(product.productId)
+						}
+					})
+					return
+				}
+				this.navigateToProductDetail(product.productId)
+			},
+			navigateToProductDetail(productId : number) {
+				if (productId != null && productId > 0) {
+					uni.navigateTo({ url: `/pages/product/detail?id=${productId}` })
+				}
+			}
+	}
+}
+</script>
+
+<style lang="scss" scoped>
+.chat-container {
+	display: flex;
+	flex-direction: column;
+	background-color: #f5f6fa;
+
+	height: 100%;
+}
+
+
+.message-list {
+	flex: 1;
+	padding: 12px 16px 76px;
+}
+
+.time-divider {
+	display: flex;
+	justify-content: center;
+	margin: 14px 0;
+}
+
+.time-text {
+	font-size: 12px;
+	color: #8d93a1;
+	background-color: #eef1f6;
+	padding: 4px 10px;
+	border-radius: 12px;
+}
+
+.message-item {
+	display: flex;
+	margin-bottom: 18px;
+}
+
+.service-msg {
+	flex-direction: row;
+}
+
+.service-avatar {
+	margin-right: 10px;
+}
+
+.service-bubble {
+	background-color: #ffffff;
+	border-top-left-radius: 14px;
+	border-top-right-radius: 14px;
+	border-bottom-right-radius: 14px;
+	border-bottom-left-radius: 4px;
+}
+
+.service-text {
+	color: #2f3440;
+}
+
+.user-msg {
+	flex-direction: row-reverse;
+}
+
+.user-avatar {
+	margin-left: 10px;
+}
+
+.user-bubble {
+	background-color: #2563eb;
+	border-top-left-radius: 14px;
+	border-top-right-radius: 14px;
+	border-bottom-left-radius: 14px;
+	border-bottom-right-radius: 4px;
+}
+
+.user-text {
+	color: #ffffff;
+}
+
+.avatar {
+	width: 36px;
+	height: 36px;
+	border-radius: 18px;
+	background-color: #e8ecf2;
+}
+
+.bubble-wrapper {
+	max-width: 280px;
+}
+
+.bubble {
+	padding: 12px 14px;
+	border-radius: 14px;
+	box-shadow: 0 6px 18px rgba(31, 36, 48, 0.08);
+}
+
+.msg-content {
+	font-size: 15px;
+	line-height: 1.6;
+	color: #1f2430;
+}
+
+.product-list {
+	margin-top: 12px;
+}
+
+.product-card {
+	display: flex;
+	background-color: #ffffff;
+	border-radius: 14px;
+	padding: 12px;
+	margin-bottom: 10px;
+	box-shadow: 0 10px 18px rgba(31, 36, 48, 0.08);
+}
+
+.product-image {
+	width: 68px;
+	height: 68px;
+	border-radius: 10px;
+	background-color: #f2f2f2;
+	margin-right: 12px;
+}
+
+.product-info {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+}
+
+.product-name {
+	font-size: 14px;
+	color: #1f2430;
+	font-weight: 700;
+	margin-bottom: 4px;
+}
+
+.product-desc {
+	font-size: 12px;
+	color: #8d93a1;
+	line-height: 1.4;
+	margin-bottom: 8px;
+}
+
+.product-price {
+	display: flex;
+	align-items: center;
+}
+
+.price-label {
+	font-size: 12px;
+	color: #ff5a5f;
+}
+
+.price-value {
+	font-size: 16px;
+	color: #ff5a5f;
+	font-weight: 700;
+}
+
+
+.typing-indicator {
+	margin-left: 52px;
+	margin-bottom: 14px;
+}
+
+.typing-text {
+	font-size: 12px;
+	color: #8d93a1;
+}
+
+.bottom-spacer {
+	height: 0;
+}
+
+.input-area {
+	background-color: #ffffff;
+	padding-top: 12px;
+	padding-left: 16px;
+	padding-right: 16px;
+	padding-bottom: env(safe-area-inset-bottom);
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	border-top: 1px solid #eef0f4;
+	position: fixed;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 10;
+}
+
+.input-box {
+	flex: 1;
+	width: 0;
+	height: 42px;
+	background-color: #f2f4f8;
+	border-radius: 22px;
+	padding: 0 16px;
+	font-size: 14px;
+	color: #1f2430;
+}
+
+.action-group {
+	display: flex;
+	align-items: center;
+	margin-left: 10px;
+	flex-shrink: 0;
+}
+
+.send-btn {
+	width: 64px;
+	height: 36px;
+	line-height: 36px;
+	background-color: #2563eb;
+	color: #ffffff;
+	font-size: 14px;
+	border-radius: 18px;
+	padding: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3);
+}
+
+.stop-btn {
+	margin-left: 8px;
+	width: 64px;
+	height: 36px;
+	line-height: 36px;
+	background-color: #ff5a5f;
+	color: #ffffff;
+	font-size: 14px;
+	border-radius: 18px;
+	padding: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-shadow: 0 6px 16px rgba(255, 90, 95, 0.3);
+}
+</style>

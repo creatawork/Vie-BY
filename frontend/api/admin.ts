@@ -1,0 +1,90 @@
+import { get, del, put, post, type ResponseDataType } from '@/utils/request'
+
+/**
+ * 获取管理员评价列表
+ */
+export function getAdminReviews(pageNum : number, pageSize : number, keyword : string, status : number = -1, rating : number = 0) : Promise<ResponseDataType> {
+	let url = `/admin/reviews?pageNum=${pageNum}&pageSize=${pageSize}`
+	if (keyword != '') {
+		url += `&keyword=${encodeURIComponent(keyword)}`
+	}
+	if (status == 0 || status == 1) {
+		url += `&status=${status}`
+	}
+	if (rating >= 1 && rating <= 5) {
+		url += `&rating=${rating}`
+	}
+	return get(url)
+}
+
+/**
+ * 获取管理员评价统计
+ */
+export function getAdminReviewStatistics() : Promise<ResponseDataType> {
+	return get('/admin/reviews/statistics')
+}
+
+/**
+ * 删除评价（管理员）
+ */
+export function deleteReview(reviewId : number) : Promise<ResponseDataType> {
+	return del(`/admin/reviews/${reviewId}`)
+}
+
+/**
+ * 更新评价状态（管理员）(1:显示, 0:隐藏)
+ */
+export function updateReviewStatus(reviewId : number, status : number) : Promise<ResponseDataType> {
+	return put(`/admin/reviews/${reviewId}/status?status=${status}`, null)
+}
+
+/**
+ * 获取用户列表
+ */
+export function getAdminUsers(pageNum : number, pageSize : number, keyword : string) : Promise<ResponseDataType> {
+	let url = `/admin/users?pageNum=${pageNum}&pageSize=${pageSize}`
+	if (keyword != '') url += `&keyword=${keyword}`
+	return get(url)
+}
+
+/**
+ * 获取用户详情
+ */
+export function getAdminUserDetail(userId : number) : Promise<ResponseDataType> {
+	return get(`/admin/users/${userId}`)
+}
+
+/**
+ * 更新用户状态
+ */
+export function updateUserStatus(userId : number, status : number) : Promise<ResponseDataType> {
+	return put(`/admin/users/${userId}/status?status=${status}`, null)
+}
+
+/**
+ * 获取管理员概览数据
+ */
+export function getAdminOverview() : Promise<ResponseDataType> {
+	return get('/admin/statistics/overview')
+}
+
+/**
+ * 获取商品分布数据
+ */
+export function getProductDistribution() : Promise<ResponseDataType> {
+	return get('/admin/statistics/product-distribution')
+}
+
+/**
+ * 获取订单分布数据
+ */
+export function getOrderDistribution() : Promise<ResponseDataType> {
+	return get('/admin/statistics/order-distribution')
+}
+
+/**
+ * 管理员手动同步商品向量
+ */
+export function syncProductVectors() : Promise<ResponseDataType> {
+	return post('/admin/products/sync-vectors', null)
+}

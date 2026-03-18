@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.vie.db.mapper.SellerAccountMapper">
+
+    <!-- 根据商家ID查询账户 -->
+    <select id="selectBySellerId" resultType="com.vie.db.entity.SellerAccount">
+        SELECT id, seller_id, balance, frozen_amount, total_income, total_withdraw, create_time, update_time
+        FROM seller_account
+        WHERE seller_id = #{sellerId}
+    </select>
+
+    <!-- 增加冻结金额（订单支付时） -->
+    <update id="increaseFrozenAmount">
+        UPDATE seller_account
+        SET frozen_amount = frozen_amount + #{amount},
+            update_time = NOW()
+        WHERE seller_id = #{sellerId}
+    </update>
+
+    <!-- 减少冻结金额（退款时），只有冻结金额足够时才减少 -->
+    <update id="decreaseFrozenAmount">
+        UPDATE seller_account
+        SET frozen_amount = frozen_amount - #{amount},
+            update_time = NOW()
+        WHERE seller_id = #{sellerId}
+          AND frozen_amount >= #{amount}
+    </update>
+
+    <!-- 结算：冻结金额转为可用余额 -->
+    <update id="settle">
+        UPDATE seller_account
+        SET frozen_amount = frozen_amount - #{amount},
+            balance = balance + #{amount},
+            update_time = NOW()
+        WHERE seller_id = #{sellerId}
+          AND frozen_amount >= #{amount}
+    </update>
+
+    <!-- 增加可用余额 -->
+    <update id="increaseBalance">
+        UPDATE seller_account
+        SET balance = balance + #{amount},
+            update_time = NOW()
+        WHERE seller_id = #{sellerId}
+    </update>
+
+    <!-- 扣减可用余额（提现），只有余额足够时才扣减 -->
+    <update id="decreaseBalance">
+        UPDATE seller_account
+        SET balance = balance - #{amount},
+            update_time = NOW()
+        WHERE seller_id = #{sellerId}
+          AND balance >= #{amount}
+    </update>
+
+    <!-- 增加累计收入 -->
+    <update id="increaseTotalIncome">
+        UPDATE seller_account
+        SET total_income = total_income + #{amount},
+            update_time = NOW()
+        WHERE seller_id = #{sellerId}
+    </update>
+
+    <!-- 增加累计提现 -->
+    <update id="increaseTotalWithdraw">
+        UPDATE seller_account
+        SET total_withdraw = total_withdraw + #{amount},
+            update_time = NOW()
+        WHERE seller_id = #{sellerId}
+    </update>
+
+</mapper>

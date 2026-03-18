@@ -1,0 +1,302 @@
+
+	import { getAdminProducts, auditProduct } from '@/api/product'
+
+	type AdminProductType = { __$originalPosition?: UTSSourceMapPosition<"AdminProductType", "pages/seller/product-audit.uvue", 85, 7>;
+		id : number
+		productName : string
+		productCode : string
+		mainImage : string
+		currentPrice : number
+		stock : number
+		salesVolume : number
+		status : number
+		createTime : string
+	}
+
+	const __sfc__ = defineComponent({
+		data() {
+			return {
+				currentStatus: 0 as number,
+				isLoading: false,
+				isRefreshing: false,
+				hasMore: true,
+				pageNum: 1,
+				pageSize: 10,
+				products: [] as AdminProductType[]
+			}
+		},
+		onLoad() {
+			this.loadProducts()
+		},
+		methods: {
+			loadProducts() {
+				this.isLoading = true
+				getAdminProducts(this.pageNum, this.pageSize, this.currentStatus).then((res) => {
+					const data = res.data as UTSJSONObject
+					const total = (data.getNumber('total') ?? 0).toInt()
+					const records = data.getArray('records')
+					const productList : AdminProductType[] = []
+
+					if (records != null) {
+						for (let i = 0; i < records.length; i++) {
+							const item = records[i] as UTSJSONObject
+							productList.push({
+								id: (item.getNumber('id') ?? 0).toInt(),
+								productName: item.getString('productName') ?? '',
+								productCode: item.getString('productCode') ?? '',
+								mainImage: item.getString('mainImage') ?? '',
+								currentPrice: item.getNumber('currentPrice') ?? 0,
+								stock: (item.getNumber('stock') ?? 0).toInt(),
+								salesVolume: (item.getNumber('salesVolume') ?? 0).toInt(),
+								status: (item.getNumber('status') ?? 0).toInt(),
+								createTime: item.getString('createTime') ?? ''
+							} as AdminProductType)
+						}
+					}
+
+					if (this.pageNum === 1) {
+						this.products = productList
+					} else {
+						this.products = this.products.concat(productList)
+					}
+
+					this.hasMore = this.products.length < total
+					this.isLoading = false
+					this.isRefreshing = false
+				}).catch((err) => {
+					console.error('获取商品列表失败:', err, " at pages/seller/product-audit.uvue:148")
+					this.isLoading = false
+					this.isRefreshing = false
+					uni.showToast({ title: '加载失败', icon: 'none' })
+				})
+			},
+			switchStatus(status : number) {
+				if (this.currentStatus === status) return
+				this.currentStatus = status
+				this.pageNum = 1
+				this.products = []
+				this.loadProducts()
+			},
+			onRefresh() {
+				this.isRefreshing = true
+				this.pageNum = 1
+				this.loadProducts()
+			},
+			loadMore() {
+				if (!this.hasMore || this.isLoading) return
+				this.pageNum++
+				this.loadProducts()
+			},
+			getStatusClass(status : number) : string {
+				if (status === 0) return 'status-tag-pending'
+				if (status === 1) return 'status-tag-passed'
+				if (status === 3) return 'status-tag-rejected'
+				return ''
+			},
+			getStatusTextClass(status : number) : string {
+				if (status === 0) return 'status-text-pending'
+				if (status === 1) return 'status-text-passed'
+				if (status === 3) return 'status-text-rejected'
+				return ''
+			},
+			getStatusText(status : number) : string {
+				if (status === 0) return '待审核'
+				if (status === 1) return '已通过'
+				if (status === 3) return '已驳回'
+				return '未知'
+			},
+			goToDetail(productId : number) {
+				uni.navigateTo({ url: `/pages/product/detail?id=${productId}` })
+			},
+			handleAudit(product : AdminProductType, status : number) {
+				const actionText = status === 1 ? '通过' : '驳回'
+				if (status === 3) {
+					uni.showModal({
+						title: '驳回审核',
+						editable: true,
+						placeholderText: '请输入驳回原因',
+						success: (res) => {
+							if (res.confirm) {
+								this.submitAudit(product.id, status, res.content ?? '不符合上架标准')
+							}
+						}
+					})
+				} else {
+					uni.showModal({
+						title: '提示',
+						content: `确定要通过该商品的上架申请吗？`,
+						success: (res) => {
+							if (res.confirm) {
+								this.submitAudit(product.id, status, '符合上架标准')
+							}
+						}
+					})
+				}
+			},
+			submitAudit(productId : number, status : number, remark : string) {
+				auditProduct(productId, status, remark).then(() => {
+					uni.showToast({ title: '操作成功', icon: 'success' })
+					// 从列表中移除或更新状态
+					this.pageNum = 1
+					this.loadProducts()
+				}).catch((err) => {
+					console.error('审核失败:', err, " at pages/seller/product-audit.uvue:224")
+					uni.showToast({ title: '操作失败', icon: 'none' })
+				})
+			}
+		}
+	})
+
+export default __sfc__
+function GenPagesSellerProductAuditRender(this: InstanceType<typeof __sfc__>): any | null {
+const _ctx = this
+const _cache = this.$.renderCache
+  return createElementVNode("view", utsMapOf({ class: "page" }), [
+    createElementVNode("view", utsMapOf({ class: "filter-header" }), [
+      createElementVNode("view", utsMapOf({ class: "status-tabs" }), [
+        createElementVNode("view", utsMapOf({
+          class: normalizeClass(["tab-item", utsMapOf({ active: _ctx.currentStatus === 0 })]),
+          onClick: () => {_ctx.switchStatus(0)}
+        }), [
+          createElementVNode("text", utsMapOf({
+            class: normalizeClass(["tab-text", utsMapOf({ 'tab-text--active': _ctx.currentStatus === 0 })])
+          }), "待审核", 2 /* CLASS */),
+          _ctx.currentStatus === 0
+            ? createElementVNode("view", utsMapOf({
+                key: 0,
+                class: "active-line"
+              }))
+            : createCommentVNode("v-if", true)
+        ], 10 /* CLASS, PROPS */, ["onClick"]),
+        createElementVNode("view", utsMapOf({
+          class: normalizeClass(["tab-item", utsMapOf({ active: _ctx.currentStatus === 1 })]),
+          onClick: () => {_ctx.switchStatus(1)}
+        }), [
+          createElementVNode("text", utsMapOf({
+            class: normalizeClass(["tab-text", utsMapOf({ 'tab-text--active': _ctx.currentStatus === 1 })])
+          }), "已通过", 2 /* CLASS */),
+          _ctx.currentStatus === 1
+            ? createElementVNode("view", utsMapOf({
+                key: 0,
+                class: "active-line"
+              }))
+            : createCommentVNode("v-if", true)
+        ], 10 /* CLASS, PROPS */, ["onClick"]),
+        createElementVNode("view", utsMapOf({
+          class: normalizeClass(["tab-item", utsMapOf({ active: _ctx.currentStatus === 3 })]),
+          onClick: () => {_ctx.switchStatus(3)}
+        }), [
+          createElementVNode("text", utsMapOf({
+            class: normalizeClass(["tab-text", utsMapOf({ 'tab-text--active': _ctx.currentStatus === 3 })])
+          }), "已驳回", 2 /* CLASS */),
+          _ctx.currentStatus === 3
+            ? createElementVNode("view", utsMapOf({
+                key: 0,
+                class: "active-line"
+              }))
+            : createCommentVNode("v-if", true)
+        ], 10 /* CLASS, PROPS */, ["onClick"])
+      ])
+    ]),
+    createElementVNode("scroll-view", utsMapOf({
+      class: "product-scroll",
+      "scroll-y": "true",
+      onScrolltolower: _ctx.loadMore,
+      onRefresherrefresh: _ctx.onRefresh,
+      "refresher-enabled": true,
+      "refresher-triggered": _ctx.isRefreshing,
+      "show-scrollbar": false
+    }), [
+      isTrue(_ctx.isLoading && _ctx.products.length === 0)
+        ? createElementVNode("view", utsMapOf({
+            key: 0,
+            class: "loading-state"
+          }), [
+            createElementVNode("text", utsMapOf({ class: "loading-text" }), "加载中...")
+          ])
+        : createElementVNode("view", utsMapOf({
+            key: 1,
+            class: "product-list"
+          }), [
+            createElementVNode(Fragment, null, RenderHelpers.renderList(_ctx.products, (product, __key, __index, _cached): any => {
+              return createElementVNode("view", utsMapOf({
+                class: "product-card",
+                key: product.id,
+                onClick: () => {_ctx.goToDetail(product.id)}
+              }), [
+                createElementVNode("image", utsMapOf({
+                  class: "product-img",
+                  src: product.mainImage,
+                  mode: "aspectFill"
+                }), null, 8 /* PROPS */, ["src"]),
+                createElementVNode("view", utsMapOf({ class: "product-info" }), [
+                  createElementVNode("view", utsMapOf({ class: "info-top" }), [
+                    createElementVNode("text", utsMapOf({ class: "product-name" }), toDisplayString(product.productName), 1 /* TEXT */),
+                    createElementVNode("view", utsMapOf({
+                      class: normalizeClass(["status-tag", _ctx.getStatusClass(product.status)])
+                    }), [
+                      createElementVNode("text", utsMapOf({
+                        class: normalizeClass(["status-text", _ctx.getStatusTextClass(product.status)])
+                      }), toDisplayString(_ctx.getStatusText(product.status)), 3 /* TEXT, CLASS */)
+                    ], 2 /* CLASS */)
+                  ]),
+                  createElementVNode("view", utsMapOf({ class: "info-middle" }), [
+                    createElementVNode("view", utsMapOf({ class: "price-row" }), [
+                      createElementVNode("text", utsMapOf({ class: "currency" }), "¥"),
+                      createElementVNode("text", utsMapOf({ class: "price" }), toDisplayString(product.currentPrice.toFixed(2)), 1 /* TEXT */)
+                    ]),
+                    createElementVNode("view", utsMapOf({ class: "stock-row" }), [
+                      createElementVNode("text", utsMapOf({ class: "stock-label" }), "库存:"),
+                      createElementVNode("text", utsMapOf({ class: "stock-value" }), toDisplayString(product.stock), 1 /* TEXT */)
+                    ])
+                  ]),
+                  createElementVNode("view", utsMapOf({ class: "info-bottom" }), [
+                    createElementVNode("text", utsMapOf({ class: "time-text" }), toDisplayString(product.createTime), 1 /* TEXT */),
+                    product.status === 0
+                      ? createElementVNode("view", utsMapOf({
+                          key: 0,
+                          class: "action-btns"
+                        }), [
+                          createElementVNode("view", utsMapOf({
+                            class: "action-btn",
+                            onClick: withModifiers(() => {_ctx.handleAudit(product, 1)}, ["stop"])
+                          }), [
+                            createElementVNode("text", utsMapOf({ class: "action-btn-text" }), "通过")
+                          ], 8 /* PROPS */, ["onClick"]),
+                          createElementVNode("view", utsMapOf({
+                            class: "action-btn action-btn-reject",
+                            onClick: withModifiers(() => {_ctx.handleAudit(product, 3)}, ["stop"])
+                          }), [
+                            createElementVNode("text", utsMapOf({ class: "action-btn-text action-btn-text-reject" }), "驳回")
+                          ], 8 /* PROPS */, ["onClick"])
+                        ])
+                      : createCommentVNode("v-if", true)
+                  ])
+                ])
+              ], 8 /* PROPS */, ["onClick"])
+            }), 128 /* KEYED_FRAGMENT */)
+          ]),
+      isTrue(!_ctx.isLoading && _ctx.products.length === 0)
+        ? createElementVNode("view", utsMapOf({
+            key: 2,
+            class: "empty-state"
+          }), [
+            createElementVNode("text", utsMapOf({ class: "empty-icon" }), "📦"),
+            createElementVNode("text", utsMapOf({ class: "empty-text" }), "暂无相关商品")
+          ])
+        : createCommentVNode("v-if", true),
+      _ctx.products.length > 0
+        ? createElementVNode("view", utsMapOf({
+            key: 3,
+            class: "load-more"
+          }), [
+            createElementVNode("text", utsMapOf({ class: "load-more-text" }), toDisplayString(_ctx.hasMore ? '上拉加载更多' : '没有更多了'), 1 /* TEXT */)
+          ])
+        : createCommentVNode("v-if", true),
+      createElementVNode("view", utsMapOf({
+        style: normalizeStyle(utsMapOf({"height":"20px"}))
+      }), null, 4 /* STYLE */)
+    ], 40 /* PROPS, NEED_HYDRATION */, ["onScrolltolower", "onRefresherrefresh", "refresher-triggered"])
+  ])
+}
+const GenPagesSellerProductAuditStyles = [utsMapOf([["page", padStyleMapOf(utsMapOf([["backgroundColor", "#f7f8fa"], ["display", "flex"], ["flexDirection", "column"], ["flex", 1]]))], ["filter-header", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["boxShadow", "0 1px 4px rgba(0, 0, 0, 0.05)"], ["zIndex", 100]]))], ["status-tabs", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["paddingTop", 0], ["paddingRight", 8], ["paddingBottom", 0], ["paddingLeft", 8], ["justifyContent", "space-around"]]))], ["tab-item", padStyleMapOf(utsMapOf([["position", "relative"], ["paddingTop", 12], ["paddingRight", 16], ["paddingBottom", 12], ["paddingLeft", 16], ["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"]]))], ["tab-text", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#666666"]]))], ["tab-text--active", padStyleMapOf(utsMapOf([["color", "#0066CC"], ["fontWeight", "700"]]))], ["active-line", padStyleMapOf(utsMapOf([["position", "absolute"], ["bottom", 4], ["width", 20], ["height", 3], ["backgroundColor", "#0066CC"], ["borderTopLeftRadius", 2], ["borderTopRightRadius", 2], ["borderBottomRightRadius", 2], ["borderBottomLeftRadius", 2]]))], ["product-scroll", padStyleMapOf(utsMapOf([["flex", 1], ["width", "100%"]]))], ["loading-state", padStyleMapOf(utsMapOf([["paddingTop", 60], ["paddingRight", 0], ["paddingBottom", 60], ["paddingLeft", 0], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["loading-text", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#999999"]]))], ["product-list", padStyleMapOf(utsMapOf([["paddingTop", 12], ["paddingRight", 16], ["paddingBottom", 12], ["paddingLeft", 16]]))], ["product-card", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["backgroundColor", "#ffffff"], ["borderTopLeftRadius", 12], ["borderTopRightRadius", 12], ["borderBottomRightRadius", 12], ["borderBottomLeftRadius", 12], ["paddingTop", 12], ["paddingRight", 12], ["paddingBottom", 12], ["paddingLeft", 12], ["marginBottom", 12], ["boxShadow", "0 2px 8px rgba(0, 0, 0, 0.02)"]]))], ["product-img", padStyleMapOf(utsMapOf([["width", 90], ["height", 90], ["borderTopLeftRadius", 8], ["borderTopRightRadius", 8], ["borderBottomRightRadius", 8], ["borderBottomLeftRadius", 8], ["backgroundColor", "#f5f5f5"], ["flexShrink", 0]]))], ["product-info", padStyleMapOf(utsMapOf([["flex", 1], ["marginLeft", 12], ["display", "flex"], ["flexDirection", "column"], ["justifyContent", "space-between"]]))], ["info-top", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"]]))], ["product-name", padStyleMapOf(utsMapOf([["flex", 1], ["fontSize", 14], ["fontWeight", "700"], ["color", "#333333"], ["lineHeight", 1.4], ["marginRight", 8]]))], ["status-tag", padStyleMapOf(utsMapOf([["paddingTop", 2], ["paddingRight", 8], ["paddingBottom", 2], ["paddingLeft", 8], ["borderTopLeftRadius", 4], ["borderTopRightRadius", 4], ["borderBottomRightRadius", 4], ["borderBottomLeftRadius", 4]]))], ["status-tag-pending", padStyleMapOf(utsMapOf([["backgroundColor", "#fff7e6"]]))], ["status-tag-passed", padStyleMapOf(utsMapOf([["backgroundColor", "#e6f7ff"]]))], ["status-tag-rejected", padStyleMapOf(utsMapOf([["backgroundColor", "#fff1f0"]]))], ["status-text", padStyleMapOf(utsMapOf([["fontSize", 11]]))], ["status-text-pending", padStyleMapOf(utsMapOf([["color", "#fa8c16"]]))], ["status-text-passed", padStyleMapOf(utsMapOf([["color", "#1890ff"]]))], ["status-text-rejected", padStyleMapOf(utsMapOf([["color", "#ff4d4f"]]))], ["info-middle", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"], ["alignItems", "center"], ["marginTop", 8], ["marginRight", 0], ["marginBottom", 8], ["marginLeft", 0]]))], ["price-row", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "flex-end"]]))], ["currency", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#ff4d4f"], ["fontWeight", "700"]]))], ["price", padStyleMapOf(utsMapOf([["fontSize", 16], ["color", "#ff4d4f"], ["fontWeight", "700"]]))], ["stock-row", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"]]))], ["stock-label", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"]]))], ["stock-value", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#333333"], ["marginLeft", 4]]))], ["info-bottom", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"], ["alignItems", "center"]]))], ["time-text", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"]]))], ["action-btns", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"]]))], ["action-btn", padStyleMapOf(utsMapOf([["paddingTop", 4], ["paddingRight", 12], ["paddingBottom", 4], ["paddingLeft", 12], ["borderTopWidth", 1], ["borderRightWidth", 1], ["borderBottomWidth", 1], ["borderLeftWidth", 1], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#0066CC"], ["borderRightColor", "#0066CC"], ["borderBottomColor", "#0066CC"], ["borderLeftColor", "#0066CC"], ["borderTopLeftRadius", 14], ["borderTopRightRadius", 14], ["borderBottomRightRadius", 14], ["borderBottomLeftRadius", 14], ["marginLeft", 8]]))], ["action-btn-reject", padStyleMapOf(utsMapOf([["borderTopColor", "#ff4d4f"], ["borderRightColor", "#ff4d4f"], ["borderBottomColor", "#ff4d4f"], ["borderLeftColor", "#ff4d4f"]]))], ["action-btn-text", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#0066CC"]]))], ["action-btn-text-reject", padStyleMapOf(utsMapOf([["color", "#ff4d4f"]]))], ["empty-state", padStyleMapOf(utsMapOf([["paddingTop", 80], ["paddingRight", 0], ["paddingBottom", 80], ["paddingLeft", 0], ["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"]]))], ["empty-icon", padStyleMapOf(utsMapOf([["fontSize", 48], ["marginBottom", 16]]))], ["empty-text", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#999999"]]))], ["load-more", padStyleMapOf(utsMapOf([["paddingTop", 20], ["paddingRight", 0], ["paddingBottom", 20], ["paddingLeft", 0], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["load-more-text", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"]]))]])]

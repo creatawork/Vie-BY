@@ -1,0 +1,981 @@
+<template>
+  <view class="page">
+    <!-- 数据汇总卡片区域 -->
+    <view class="summary-section">
+      <view class="summary-header">
+        <text class="summary-title">数据概览</text>
+        <view class="time-selector">
+          <view class="time-option" :class="{ 'time-option-active': timeUnit === 'DAY' }" @click="switchTimeUnit('DAY')">
+            <text class="time-text" :class="{ 'time-text-active': timeUnit === 'DAY' }">日</text>
+          </view>
+          <view class="time-option" :class="{ 'time-option-active': timeUnit === 'WEEK' }" @click="switchTimeUnit('WEEK')">
+            <text class="time-text" :class="{ 'time-text-active': timeUnit === 'WEEK' }">周</text>
+          </view>
+          <view class="time-option" :class="{ 'time-option-active': timeUnit === 'MONTH' }" @click="switchTimeUnit('MONTH')">
+            <text class="time-text" :class="{ 'time-text-active': timeUnit === 'MONTH' }">月</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="summary-cards">
+        <view class="summary-card">
+          <text class="card-value">¥{{ formatMoney(salesData.totalSales) }}</text>
+          <text class="card-label">总销售额</text>
+        </view>
+        <view class="summary-card">
+          <text class="card-value">{{ salesData.totalOrders }}</text>
+          <text class="card-label">订单数</text>
+        </view>
+        <view class="summary-card">
+          <text class="card-value">{{ salesData.totalQuantity }}</text>
+          <text class="card-label">销量</text>
+        </view>
+        <view class="summary-card">
+          <text class="card-value">¥{{ formatMoney(salesData.avgOrderAmount) }}</text>
+          <text class="card-label">客单价</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 销售趋势图表区域 -->
+    <view class="chart-section">
+      <view class="section-header">
+        <text class="section-title">销售趋势</text>
+      </view>
+      <view class="chart-container">
+        <!-- 简易图表展示 -->
+        <view class="chart-wrapper" v-if="trendData.length > 0">
+          <view class="chart-bars">
+            <view class="chart-bar-item" v-for="(item, index) in trendData" :key="index">
+              <view class="bar-wrapper">
+                <view class="bar" :style="{ height: getBarHeight(item.amount) + 'px' }"></view>
+              </view>
+              <text class="bar-label">{{ item.label }}</text>
+            </view>
+          </view>
+          <view class="chart-legend">
+            <text class="legend-text">单位: 元</text>
+          </view>
+        </view>
+        <view class="chart-empty" v-else>
+          <text class="empty-text">暂无趋势数据</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 商品销量排行区域 -->
+    <view class="ranking-section">
+      <view class="section-header">
+        <text class="section-title">商品销量排行 TOP10</text>
+      </view>
+
+      <view class="ranking-list" v-if="rankingList.length > 0">
+        <view class="ranking-item" v-for="(item, index) in rankingList" :key="item.productId">
+          <view class="rank-badge" :class="getRankClass(index)">
+            <text class="rank-num" :class="{ 'rank-num-top': index < 3 }">{{ index + 1 }}</text>
+          </view>
+          <image class="product-img" :src="item.mainImage" mode="aspectFill"></image>
+          <view class="product-info">
+            <text class="product-name">{{ item.productName }}</text>
+            <view class="product-stats">
+              <text class="stat-item">销量: {{ item.sales }}</text>
+              <text class="stat-item">销售额: ¥{{ formatMoney(item.salesAmount) }}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="ranking-empty" v-else>
+        <text class="empty-icon">📊</text>
+        <text class="empty-text">暂无排行数据</text>
+      </view>
+    </view>
+<!-- 运营洞察（现代简约卡片） -->
+    <view class="insight-grid">
+      <view class="insight-card" @click="goInventoryLowStock">
+        <text class="insight-value">{{ inventoryHealth.lowStockCount }}</text>
+        <text class="insight-label">低库存 SKU</text>
+      </view>
+      <view class="insight-card" @click="goInventoryOutOfStock">
+        <text class="insight-value insight-value-warn">{{ inventoryHealth.outOfStockCount }}</text>
+        <text class="insight-label">缺货 SKU</text>
+      </view>
+      <view class="insight-card">
+        <text class="insight-value">{{ inventoryHealth.healthyRate.toFixed(1) }}%</text>
+        <text class="insight-label">库存健康率</text>
+      </view>
+    </view>
+
+    <!-- 订单状态分布（简约条形占比） -->
+    <view class="dist-section">
+      <view class="section-header">
+        <text class="section-title">订单状态分布</text>
+      </view>
+      <view v-if="orderDistribution.length > 0" class="dist-list">
+        <view class="dist-item" v-for="(item, index) in orderDistribution" :key="index">
+          <view class="dist-row">
+            <text class="dist-name">{{ item.statusDesc }}</text>
+            <text class="dist-meta">{{ item.count }} · {{ item.percentage.toFixed(1) }}%</text>
+          </view>
+          <view class="dist-bar">
+            <view class="dist-bar-fill" :style="{ width: item.percentage + '%' }"></view>
+          </view>
+        </view>
+      </view>
+      <view v-else class="chart-empty">
+        <text class="empty-text">暂无订单分布数据</text>
+      </view>
+    </view>
+
+    <!-- SKU 销量排行（简约列表） -->
+    <view class="ranking-section">
+      <view class="section-header">
+        <text class="section-title">SKU 销量排行 TOP5</text>
+      </view>
+      <view class="sku-list" v-if="skuRankingList.length > 0">
+        <view class="sku-item" v-for="(item, index) in skuRankingList" :key="item.skuId">
+          <view class="sku-rank">
+            <text class="sku-rank-num">{{ index + 1 }}</text>
+          </view>
+          <view class="sku-info">
+            <text class="sku-name">{{ item.productName }} · {{ item.skuName }}</text>
+            <text class="sku-sub">销量 {{ item.salesVolume }} · ¥{{ formatMoney(item.salesAmount) }}</text>
+          </view>
+        </view>
+      </view>
+      <view v-else class="ranking-empty">
+        <text class="empty-text">暂无 SKU 排行数据</text>
+      </view>
+    </view>
+
+    <!-- 加载状态 -->
+    <view class="loading-mask" v-if="isLoading">
+      <text class="loading-text">加载中...</text>
+    </view>
+  </view>
+</template>
+
+
+<script lang="uts">
+import {
+  getSalesStatistics,
+  getProductRanking,
+  getOrderStatusDistribution,
+  getSkuRanking,
+  getInventoryHealth,
+  type StatisticsParams,
+  type RankingParams
+} from '@/api/seller'
+import type { ResponseDataType } from '@/utils/request'
+
+// 销售数据类型
+type SalesDataType = {
+  totalSales: number       // 总销售额
+  totalOrders: number      // 总订单数
+  totalQuantity: number    // 总销量
+  avgOrderAmount: number   // 平均客单价
+}
+
+// 趋势数据类型
+type TrendItemType = {
+  date: string
+  label: string
+  amount: number
+  orders: number
+}
+
+// 排行数据类型
+type RankingItemType = {
+  productId: number
+  productName: string
+  mainImage: string
+  sales: number
+  salesAmount: number
+}
+
+// 订单状态分布类型
+type OrderStatusType = {
+  status: number
+  statusDesc: string
+  count: number
+  percentage: number
+}
+
+// 库存健康类型
+type InventoryHealthType = {
+  totalSkuCount: number
+  lowStockCount: number
+  outOfStockCount: number
+  healthyRate: number
+}
+
+// SKU排行类型
+type SkuRankingType = {
+  skuId: number
+  skuName: string
+  productName: string
+  salesVolume: number
+  salesAmount: number
+}
+
+export default {
+  data() {
+    return {
+      isLoading: false,
+      timeUnit: 'DAY' as string,  // 'DAY' | 'WEEK' | 'MONTH'
+
+      // 销售汇总数据
+      salesData: {
+        totalSales: 0,
+        totalOrders: 0,
+        totalQuantity: 0,
+        avgOrderAmount: 0
+      } as SalesDataType,
+
+      // 趋势数据
+      trendData: [] as TrendItemType[],
+      maxTrendAmount: 0,
+
+      // 排行数据
+      rankingList: [] as RankingItemType[],
+
+      // 订单分布
+      orderDistribution: [] as OrderStatusType[],
+
+      // 库存健康
+      inventoryHealth: {
+        totalSkuCount: 0,
+        lowStockCount: 0,
+        outOfStockCount: 0,
+        healthyRate: 0
+      } as InventoryHealthType,
+
+      // SKU排行
+      skuRankingList: [] as SkuRankingType[]
+    }
+  },
+  onLoad() {
+    this.loadAllData()
+  },
+  methods: {
+    // 加载所有数据
+    loadAllData() {
+      this.isLoading = true
+
+      // 并行加载所有统计数据
+      Promise.all([
+        this.loadSalesStatistics(),
+        this.loadProductRanking(),
+        this.loadOrderStatusDistribution(),
+        this.loadSkuRanking(),
+        this.loadInventoryHealth()
+      ]).then(() => {
+        this.isLoading = false
+      }).catch((err) => {
+        console.error('加载数据失败:', err)
+        this.isLoading = false
+        uni.showToast({ title: '加载数据失败', icon: 'none' })
+      })
+    },
+
+    // 加载销售统计数据
+    loadSalesStatistics(): Promise<void> {
+      return new Promise((resolve, reject) => {
+        const params: StatisticsParams = {
+          startDate: null,
+          endDate: null,
+          timeUnit: this.timeUnit
+        }
+
+        getSalesStatistics(params).then((res) => {
+          const root = res.data as UTSJSONObject | null
+          if (root == null) {
+            resolve()
+            return
+          }
+
+          const summary = root.get('summary') as UTSJSONObject | null
+          if (summary != null) {
+            this.salesData = {
+              totalSales: summary.getNumber('totalSales') ?? 0,
+              totalOrders: (summary.getNumber('totalOrders') ?? 0).toInt(),
+              totalQuantity: (summary.getNumber('totalQuantity') ?? 0).toInt(),
+              avgOrderAmount: summary.getNumber('avgOrderAmount') ?? 0
+            } as SalesDataType
+          }
+
+          const trend = root.getArray('trend')
+          this.parseTrendData(trend as any[] | null)
+
+          resolve()
+        }).catch((err) => {
+          console.error('获取销售统计失败:', err)
+          reject(err)
+        })
+      })
+    },
+
+    // 解析趋势数据
+    parseTrendData(trend: any[] | null) {
+      if (trend == null) {
+        this.trendData = []
+        this.maxTrendAmount = 0
+        return
+      }
+
+      const items: TrendItemType[] = []
+      let maxAmount = 0
+
+      for (let i = 0; i < trend.length; i++) {
+        const item = trend[i] as UTSJSONObject
+        const amount = item.getNumber('sales') ?? 0
+
+        if (amount > maxAmount) {
+          maxAmount = amount
+        }
+
+        const dateStr = item.getString('date') ?? ''
+        items.push({
+          date: dateStr,
+          label: this.formatDateLabel(dateStr),
+          amount: amount,
+          orders: (item.getNumber('orders') ?? 0).toInt()
+        } as TrendItemType)
+      }
+
+      this.trendData = items
+      this.maxTrendAmount = maxAmount
+    },
+
+    // 格式化日期标签
+    formatDateLabel(dateStr: string): string {
+      if (dateStr === '' || dateStr.length < 5) return dateStr
+
+      // 根据时间粒度格式化
+      if (this.timeUnit === 'DAY') {
+        // 显示 MM-DD
+        if (dateStr.length >= 10) {
+          return dateStr.substring(5, 10)
+        }
+        return dateStr
+      } else if (this.timeUnit === 'WEEK') {
+        // 显示周数
+        return dateStr
+      } else {
+        // 显示月份
+        if (dateStr.length >= 7) {
+          return dateStr.substring(5, 7) + '月'
+        }
+        return dateStr
+      }
+    },
+
+    // 加载商品排行数据
+    loadProductRanking(): Promise<void> {
+      return new Promise((resolve, reject) => {
+        const params: RankingParams = {
+          limit: 10,
+          orderBy: 'sales'
+        }
+
+        getProductRanking(params).then((res) => {
+          this.parseRankingData(res.data)
+          resolve()
+        }).catch((err) => {
+          console.error('获取商品排行失败:', err)
+          reject(err)
+        })
+      })
+    },
+
+    // 解析排行数据
+    parseRankingData(data: any | null) {
+      const list = data as any[] | null
+      if (list == null) {
+        this.rankingList = []
+        return
+      }
+
+      const items: RankingItemType[] = []
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i] as UTSJSONObject
+        items.push({
+          productId: (item.getNumber('productId') ?? 0).toInt(),
+          productName: item.getString('productName') ?? '',
+          mainImage: item.getString('mainImage') ?? '',
+          sales: (item.getNumber('salesVolume') ?? 0).toInt(),
+          salesAmount: item.getNumber('salesAmount') ?? 0
+        } as RankingItemType)
+      }
+      this.rankingList = items
+    },
+
+    // 加载订单状态分布
+    loadOrderStatusDistribution(): Promise<void> {
+      return new Promise((resolve, reject) => {
+        getOrderStatusDistribution({ startDate: null, endDate: null, timeUnit: null } as StatisticsParams).then((res : ResponseDataType) => {
+          const root = res.data as UTSJSONObject | null
+          if (root != null) {
+            const list = root.getArray('distribution')
+            if (list != null) {
+              const items: OrderStatusType[] = []
+              for (let i = 0; i < list.length; i++) {
+                const item = list[i] as UTSJSONObject
+                items.push({
+                  status: (item.getNumber('status') ?? 0).toInt(),
+                  statusDesc: item.getString('statusDesc') ?? '',
+                  count: (item.getNumber('count') ?? 0).toInt(),
+                  percentage: item.getNumber('percentage') ?? 0
+                } as OrderStatusType)
+              }
+              this.orderDistribution = items
+            }
+          }
+          resolve()
+        }).catch((err: any | null) => {
+          console.error('获取订单分布失败:', err)
+          reject(err)
+        })
+      })
+    },
+    goInventoryLowStock() {
+      uni.navigateTo({
+        url: '/pages/seller/inventory?lowStock=true'
+      })
+    },
+
+    // 跳转到库存管理（缺货）
+    goInventoryOutOfStock() {
+      uni.navigateTo({
+        url: '/pages/seller/inventory?outOfStock=true'
+      })
+    },
+
+    // 加载 SKU 排行
+    loadSkuRanking(): Promise<void> {
+      return new Promise((resolve, reject) => {
+        getSkuRanking({ limit: 5, orderBy: 'sales' } as RankingParams).then((res : ResponseDataType) => {
+          const list = res.data as any[] | null
+          if (list != null) {
+            const items: SkuRankingType[] = []
+            for (let i = 0; i < list.length; i++) {
+              const item = list[i] as UTSJSONObject
+              items.push({
+                skuId: (item.getNumber('skuId') ?? 0).toInt(),
+                skuName: item.getString('skuName') ?? '',
+                productName: item.getString('productName') ?? '',
+                salesVolume: (item.getNumber('salesVolume') ?? 0).toInt(),
+                salesAmount: item.getNumber('salesAmount') ?? 0
+              } as SkuRankingType)
+            }
+            this.skuRankingList = items
+          }
+          resolve()
+        }).catch((err) => {
+          console.error('获取SKU排行失败:', err)
+          reject(err)
+        })
+      })
+    },
+
+    // 加载库存健康
+    loadInventoryHealth(): Promise<void> {
+      return new Promise((resolve, reject) => {
+        getInventoryHealth().then((res) => {
+          const data = res.data as UTSJSONObject | null
+          if (data != null) {
+            this.inventoryHealth = {
+              totalSkuCount: (data.getNumber('totalSkuCount') ?? 0).toInt(),
+              lowStockCount: (data.getNumber('lowStockCount') ?? 0).toInt(),
+              outOfStockCount: (data.getNumber('outOfStockCount') ?? 0).toInt(),
+              healthyRate: data.getNumber('healthyRate') ?? 0
+            } as InventoryHealthType
+          }
+          resolve()
+        }).catch((err) => {
+          console.error('获取库存健康失败:', err)
+          reject(err)
+        })
+      })
+    },
+
+    // 切换时间粒度
+    switchTimeUnit(unit: string) {
+      if (this.timeUnit === unit) return
+      this.timeUnit = unit
+      this.loadSalesStatistics()
+    },
+
+    // 格式化金额
+    formatMoney(amount: number): string {
+      if (amount >= 10000) {
+        return (amount / 10000).toFixed(2) + '万'
+      }
+      return amount.toFixed(2)
+    },
+
+    // 计算柱状图高度
+    getBarHeight(amount: number): number {
+      if (this.maxTrendAmount <= 0) return 10
+      const maxHeight = 100
+      const minHeight = 10
+      const ratio = amount / this.maxTrendAmount
+      return Math.max(minHeight, ratio * maxHeight)
+    },
+
+    // 获取排名样式类
+    getRankClass(index: number): string {
+      if (index === 0) return 'rank-badge-first'
+      if (index === 1) return 'rank-badge-second'
+      if (index === 2) return 'rank-badge-third'
+      return ''
+    }
+  }
+}
+</script>
+
+/* 运营洞察卡片 */
+.insight-grid {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  margin: 0 16px 12px;
+}
+
+.insight-card {
+  flex: 1;
+  background-color: #fff;
+  border-radius: 12px;
+  padding: 12px;
+  margin-right: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.insight-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #333;
+}
+
+.insight-value-warn {
+  color: #ff4d4f;
+}
+
+.insight-label {
+  font-size: 10px;
+  color: #999;
+  margin-top: 4px;
+}
+
+/* 订单分布 */
+.dist-section {
+  background-color: #fff;
+  margin: 0 16px 12px;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.dist-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.dist-item {
+  margin-bottom: 12px;
+}
+
+.dist-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.dist-name {
+  font-size: 13px;
+  color: #333;
+}
+
+.dist-meta {
+  font-size: 12px;
+  color: #999;
+}
+
+.dist-bar {
+  height: 6px;
+  background-color: #f5f5f5;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.dist-bar-fill {
+  height: 100%;
+  background-color: #0066CC;
+  border-radius: 3px;
+}
+
+/* SKU 排行 */
+.sku-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.sku-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.sku-rank {
+  width: 20px;
+  height: 20px;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10px;
+}
+
+.sku-rank-num {
+  font-size: 11px;
+  color: #999;
+  font-weight: 700;
+}
+
+.sku-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.sku-name {
+  font-size: 13px;
+  color: #333;
+  font-weight: bold;
+}
+
+.sku-sub {
+  font-size: 11px;
+  color: #999;
+  margin-top: 2px;
+}
+
+<style lang="scss" scoped>
+.page {
+  background-color: #f7f8fa;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding-bottom: 20px;
+}
+
+/* 数据汇总区域 */
+.summary-section {
+  background-color: #0066CC;
+  padding: 16px;
+  padding-top: 66px;
+}
+
+.summary-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.summary-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.time-selector {
+  display: flex;
+  flex-direction: row;
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  padding: 2px;
+}
+
+.time-option {
+  padding: 6px 14px;
+  border-radius: 14px;
+}
+
+.time-option-active {
+  background-color: #fff;
+}
+
+.time-text {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.time-text-active {
+  color: #0066CC;
+  font-weight: 700;
+}
+
+.summary-cards {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin: -6px;
+}
+
+.summary-card {
+  width: 50%;
+  padding: 6px;
+  box-sizing: border-box;
+}
+
+.summary-card {
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 6px;
+  width: 46%;
+}
+
+.card-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.card-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+  margin-top: 6px;
+}
+
+/* 图表区域 */
+.chart-section {
+  background-color: #fff;
+  margin: 12px 16px;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.section-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #333;
+}
+
+.chart-container {
+  min-height: 160px;
+}
+
+.chart-wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-bars {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-around;
+  align-items: flex-end;
+  height: 120px;
+  padding: 0 8px;
+}
+
+.chart-bar-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  max-width: 40px;
+}
+
+.bar-wrapper {
+  height: 100px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.bar {
+  width: 20px;
+  background: linear-gradient(180deg, #0066CC 0%, #4d94db 100%);
+  border-radius: 4px 4px 0 0;
+  min-height: 4px;
+}
+
+.bar-label {
+  font-size: 10px;
+  color: #999;
+  margin-top: 6px;
+  text-align: center;
+}
+
+.chart-legend {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.legend-text {
+  font-size: 11px;
+  color: #999;
+}
+
+.chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 120px;
+}
+
+/* 排行区域 */
+.ranking-section {
+  background-color: #fff;
+  margin: 0 16px 12px;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.ranking-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.ranking-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.rank-badge {
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  background-color: #f5f5f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.rank-badge-first {
+  background-color: #ffd700;
+}
+
+.rank-badge-second {
+  background-color: #c0c0c0;
+}
+
+.rank-badge-third {
+  background-color: #cd7f32;
+}
+
+.rank-num {
+  font-size: 12px;
+  font-weight: 700;
+  color: #666;
+}
+
+.rank-num-top {
+  color: #fff;
+}
+
+.product-img {
+  width: 50px;
+  height: 50px;
+  border-radius: 8px;
+  background-color: #f5f5f5;
+  margin-left: 12px;
+  flex-shrink: 0;
+}
+
+.product-info {
+  flex: 1;
+  margin-left: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.product-name {
+  font-size: 14px;
+  font-weight: bold;
+  color: #333;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.product-stats {
+  display: flex;
+  flex-direction: row;
+  margin-top: 6px;
+}
+
+.stat-item {
+  font-size: 12px;
+  color: #999;
+  margin-right: 16px;
+}
+
+.ranking-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
+}
+
+.empty-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+}
+
+.empty-text {
+  font-size: 14px;
+  color: #999;
+}
+
+/* 加载状态 */
+.loading-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.loading-text {
+  font-size: 14px;
+  color: #666;
+}
+</style>

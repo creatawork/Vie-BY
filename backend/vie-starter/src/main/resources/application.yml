@@ -1,0 +1,104 @@
+spring:
+  application:
+    name: vie-starter
+  profiles:
+    active: prod
+  datasource:
+    url: jdbc:mysql://localhost:3306/vie?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=UTC
+    username: root
+    password: 123456yyy
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  ai:
+    openai:
+      api-key: ""
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      chat:
+        options:
+          model: qwen3.5-plus
+      embedding:
+        options:
+          model: text-embedding-v4
+    vectorstore:
+      pgvector:
+        datasource:
+          url: jdbc:postgresql://localhost:5432/vie_rag
+          username: postgres
+          password: 123456yyy
+          driver-class-name: org.postgresql.Driver
+        index-type: HNSW
+        dimensions: 1536
+        distance-type: COSINE_DISTANCE
+        initialize-schema: true
+
+  rag:
+    max-results: 3
+
+
+redis:
+    url: redis://localhost:6379
+    timeout: 10000ms
+    lettuce:
+      pool:
+        max-active: 8
+        max-idle: 8
+        min-idle: 0
+        max-wait: -1ms
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+# JWT配置
+jwt:
+  secret: VieSecretKeyForJWTTokenGenerationAndValidation2024
+  expiration: 86400  # Token过期时间（秒），默认24小时
+
+# MyBatis-Plus配置
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.vie.db.entity
+  global-config:
+    db-config:
+      logic-delete-field: is_deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  configuration:
+    map-underscore-to-camel-case: true
+    # 注释掉 SQL 日志输出，减少控制台信息
+    # log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# 日志配置（详细配置在 logback-spring.xml 中）
+logging:
+  level:
+    root: INFO
+
+# 阿里云OSS配置
+aliyun:
+  oss:
+    endpoint: https://oss-cn-chengdu.aliyuncs.com
+    access-key-id: ""
+    access-key-secret: ""
+    bucket-name: ""
+    region: cn-chengdu
+    max-file-size: 5242880  # 5MB
+
+# 高德地图配置
+amap:
+  api-key: ""
+  reverse-geocode-url: https://restapi.amap.com/v3/geocode/regeo
+
+# 物流配置
+logistics:
+  # 发货后多少分钟自动送达（演示用设置较短时间）
+  auto-deliver-minutes: 2
+  # 送达后多少分钟自动确认收货（演示用设置较短时间）
+  auto-receive-minutes: 5

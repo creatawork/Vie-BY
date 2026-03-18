@@ -1,0 +1,173 @@
+/**
+ * 商品相关API接口
+ */
+
+import { get, post, put, del, ResponseDataType } from '@/utils/request'
+
+/**
+ * 获取商品列表 (搜索)
+ */
+export function getProductList(pageNum : number, pageSize : number, keyword : string | null, categoryId : number | null) : Promise<ResponseDataType> {
+	const jsonData = {
+		pageNum: pageNum,
+		pageSize: pageSize,
+		status: 1,
+		keyword: (keyword != null && keyword != '') ? keyword : null,
+		categoryId: categoryId
+	} as UTSJSONObject
+	return post('/products/search', jsonData)
+}
+
+/**
+ * 获取商品详情
+ */
+export function getProductDetail(productId : number) : Promise<ResponseDataType> {
+	return get(`/products/${productId}`)
+}
+
+/**
+ * 获取商品分类树
+ */
+export function getCategories() : Promise<ResponseDataType> {
+	return get('/categories/tree')
+}
+
+/**
+ * 搜索商品
+ */
+export function searchProducts(keyword : string) : Promise<ResponseDataType> {
+	return getProductList(1, 10, keyword, null)
+}
+
+/**
+ * 获取推荐商品
+ */
+export function getRecommendedProducts(limit : number) : Promise<ResponseDataType> {
+	return get(`/products/recommended?limit=${limit}`)
+}
+
+/**
+ * 获取热销商品
+ */
+export function getHotProducts(limit : number) : Promise<ResponseDataType> {
+	return get(`/products/hot?limit=${limit}`)
+}
+
+/**
+ * 获取新品商品
+ */
+export function getNewProducts(limit : number) : Promise<ResponseDataType> {
+	return get(`/products/new?limit=${limit}`)
+}
+
+/**
+ * 收藏商品
+ */
+export function collectProduct(productId : number) : Promise<ResponseDataType> {
+	return post(`/products/${productId}/collect`, null)
+}
+
+/**
+ * 取消收藏商品
+ */
+export function uncollectProduct(productId : number) : Promise<ResponseDataType> {
+	return del(`/products/${productId}/uncollect`)
+}
+
+/**
+ * 检查商品是否已收藏
+ */
+export function isProductCollected(productId : number) : Promise<ResponseDataType> {
+	return get(`/products/${productId}/is-collected`)
+}
+
+/**
+ * 获取用户收藏列表
+ * @param pageNum 页码
+ * @param pageSize 每页数量
+ * @param sortBy 排序字段：time-收藏时间，price-价格
+ * @param sortOrder 排序方式：desc-降序，asc-升序
+ * @returns Promise<ResponseDataType>
+ *
+ * 接口：GET /api/users/collections
+ * 返回数据格式：
+ * {
+ *   code: 200,
+ *   data: {
+ *     records: [{collectionId, productId, productName, mainImage, currentPrice, originalPrice, stock, salesVolume, status, collectTime, inStock}],
+ *     total: 总数,
+ *     size: 每页数量,
+ *     current: 当前页,
+ *     pages: 总页数
+ *   }
+ * }
+ */
+export function getCollectionList(pageNum : number, pageSize : number, sortBy : string | null, sortOrder : string | null) : Promise<ResponseDataType> {
+	let url = `/users/collections?pageNum=${pageNum}&pageSize=${pageSize}`
+	if (sortBy != null && sortBy != '') {
+		url += `&sortBy=${sortBy}`
+	}
+	if (sortOrder != null && sortOrder != '') {
+		url += `&sortOrder=${sortOrder}`
+	}
+	return get(url)
+}
+
+/**
+ * 获取用户收藏商品总数
+ * @returns Promise<ResponseDataType>
+ *
+ * 接口：GET /api/users/collections/count
+ * 返回数据格式：
+ * {
+ *   code: 200,
+ *   data: 15  // 收藏总数
+ * }
+ */
+export function getCollectionCount() : Promise<ResponseDataType> {
+	return get('/users/collections/count')
+}
+
+/**
+ * 清空收藏夹
+ * @returns Promise<ResponseDataType>
+ *
+ * 接口：DELETE /api/users/collections/clear
+ * 返回数据格式：
+ * {
+ *   code: 200,
+ *   message: "清空收藏夹成功",
+ *   data: 15  // 清空的收藏数量
+ * }
+ */
+export function clearCollections() : Promise<ResponseDataType> {
+	return del('/users/collections/clear')
+}
+
+/**
+ * 获取管理员商品列表 (管理员)
+ * @param pageNum 页码
+ * @param pageSize 每页数量
+ * @param status 状态筛选：0-待审核，1-上架，2-下架，3-审核不通过
+ */
+export function getAdminProducts(pageNum : number, pageSize : number, status : number | null) : Promise<ResponseDataType> {
+	let url = `/admin/products?pageNum=${pageNum}&pageSize=${pageSize}`
+	if (status != null) {
+		url += `&status=${status}`
+	}
+	return get(url)
+}
+
+/**
+ * 商品审核 (管理员)
+ * @param productId 商品ID
+ * @param status 审核结果：1-通过(上架)，3-驳回
+ * @param auditRemark 审核备注/驳回原因
+ */
+export function auditProduct(productId : number, status : number, auditRemark : string | null) : Promise<ResponseDataType> {
+	const data = {
+		status: status,
+		auditRemark: auditRemark
+	} as UTSJSONObject
+	return put(`/products/${productId}/audit`, data)
+}

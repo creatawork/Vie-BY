@@ -1,0 +1,61 @@
+/**
+ * 商家订单管理 API
+ * @module api/sellerOrder
+ */
+import { get, type ResponseDataType } from '@/utils/request';
+/**
+ * 订单查询参数类型
+ */
+type OrderQueryParams = {
+    pageNum?: number;
+    pageSize?: number;
+    status?: number;
+    orderNo?: string;
+    startDate?: string;
+    endDate?: string;
+    keyword?: string;
+};
+/**
+ * 获取商家订单列表
+ * @param params 查询参数
+ */
+export function getSellerOrderList(params?: OrderQueryParams): Promise<ResponseDataType> {
+    // 注意：UTS中GET请求不支持通过data传参，需要构建URL查询字符串
+    let url = '/seller/orders';
+    if (params != null) {
+        const queryParts: string[] = [];
+        if (params.pageNum != null)
+            queryParts.push(`pageNum=${params.pageNum}`);
+        if (params.pageSize != null)
+            queryParts.push(`pageSize=${params.pageSize}`);
+        if (params.status != null)
+            queryParts.push(`status=${params.status}`);
+        if (params.orderNo != null)
+            queryParts.push(`orderNo=${params.orderNo}`);
+        if (params.startDate != null)
+            queryParts.push(`startDate=${params.startDate}`);
+        if (params.endDate != null)
+            queryParts.push(`endDate=${params.endDate}`);
+        if (params.keyword != null)
+            queryParts.push(`keyword=${params.keyword}`);
+        if (queryParts.length > 0) {
+            url += '?' + queryParts.join('&');
+        }
+    }
+    return get(url);
+}
+/**
+ * 获取商家订单详情
+ * @param orderId 订单ID
+ */
+export function getSellerOrderDetail(orderId: number): Promise<ResponseDataType> {
+    return get(`/seller/orders/${orderId}`);
+}
+/**
+ * 获取商家订单统计
+ * @returns 各状态订单数量统计
+ */
+export function getSellerOrderCount(): Promise<ResponseDataType> {
+    return get('/seller/orders/count');
+}
+//# sourceMappingURL=sellerOrder.uts.map

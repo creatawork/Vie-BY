@@ -1,0 +1,387 @@
+<template>
+  <view class="checkout-page">
+    <!-- 头部 -->
+    <view class="header">
+      <view class="back-btn" @click="goBack">
+        <text class="back-icon">←</text>
+      </view>
+      <text class="page-title">确认订单</text>
+      <view class="placeholder"></view>
+    </view>
+
+    <!-- 加载中 -->
+    <view v-if="isLoading" class="loading-state">
+      <text class="loading-text">加载中...</text>
+    </view>
+
+    <scroll-view v-else class="content-scroll" scroll-y="true">
+      <!-- 收货地址 -->
+      <view class="address-section" @click="selectAddress">
+        <view v-if="selectedAddress != null" class="address-card">
+          <view class="address-icon">📍</view>
+          <view class="address-info">
+            <view class="address-top">
+              <text class="receiver-name">{{ selectedAddress!.receiverName }}</text>
+              <text class="receiver-phone">{{ selectedAddress!.receiverPhone }}</text>
+              <view v-if="selectedAddress!.isDefault === 1" class="default-tag">
+                <text class="default-tag-text">默认</text>
+              </view>
+            </view>
+            <text class="address-detail">{{ selectedAddress!.fullAddress }}</text>
+          </view>
+          <text class="arrow-icon">></text>
+        </view>
+        <view v-else class="no-address">
+          <text class="no-address-icon">+</text>
+          <text class="no-address-text">请添加收货地址</text>
+        </view>
+      </view>
+
+      <!-- 商品列表 -->
+      <view class="goods-section">
+        <view class="section-header">
+          <text class="shop-icon">🏪</text>
+          <text class="shop-name">鲜农优选直营店</text>
+        </view>
+        <view class="goods-list">
+          <view class="goods-item" v-for="(item, index) in orderGoods" :key="index">
+            <image class="goods-image" :src="item.productImage" mode="aspectFill"></image>
+            <view class="goods-info">
+              <text class="goods-name">{{ item.productName }}</text>
+              <text class="goods-spec">{{ item.skuName }}</text>
+              <view class="goods-bottom">
+                <text class="goods-price">¥{{ item.price.toFixed(2) }}</text>
+                <text class="goods-qty">x{{ item.quantity }}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 订单备注 -->
+      <view class="remark-section">
+        <text class="remark-label">订单备注</text>
+        <input class="remark-input" type="text" v-model="remark" placeholder="选填，请输入备注信息" placeholder-class="remark-placeholder" />
+      </view>
+
+      <!-- 费用明细 -->
+      <view class="price-section">
+        <view class="price-row">
+          <text class="price-label">商品金额</text>
+          <text class="price-value">¥{{ totalGoodsAmount.toFixed(2) }}</text>
+        </view>
+        <view class="price-row">
+          <text class="price-label">运费</text>
+          <text class="price-value">¥{{ freightAmount.toFixed(2) }}</text>
+        </view>
+      </view>
+
+      <!-- 底部占位 -->
+      <view style="height: 140rpx;"></view>
+    </scroll-view>
+
+    <!-- 底部结算栏 -->
+    <view class="bottom-bar">
+      <view class="total-info">
+        <text class="total-label">合计：</text>
+        <text class="total-price">¥{{ totalPayAmount.toFixed(2) }}</text>
+      </view>
+      <button class="submit-btn" :disabled="!canSubmit || isSubmitting" @click="submitOrder">
+        {{ isSubmitting ? '提交中...' : '提交订单' }}
+      </button>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+import { getCart, type CartItemVO } from '@/api/cart'
+import { createOrder, type OrderCreateParams, type DirectBuyItem } from '@/api/order'
+	import { getDefaultAddress } from '@/api/address'
+
+type AddressType = {
+  id : number
+  receiverName : string
+  receiverPhone : string
+  province : string
+  city : string
+  district : string
+  detailAddress : string
+  fullAddress : string
+  isDefault : number
+}
+
+type OrderGoodsType = {
+  cartId : number
+  productId : number
+  skuId : number
+  productName : string
+  productImage : string
+  skuName : string
+  price : number
+  quantity : number
+}
+
+export default {
+  data() {
+    return {
+      isLoading: true,
+      isSubmitting: false,
+      orderType: 'cart',
+      cartItemIds: [] as number[],
+      directBuyItem: null as DirectBuyItem | null,
+      orderGoods: [] as OrderGoodsType[],
+      selectedAddress: null as AddressType | null,
+      remark: '',
+      freightAmount: 0
+    }
+  },
+
+  computed: {
+    totalGoodsAmount() : number {
+      return this.orderGoods.reduce((sum : number, item : OrderGoodsType) : number => sum + item.price * item.quantity, 0)
+    },
+    totalPayAmount() : number {
+      return this.totalGoodsAmount + this.freightAmount
+    },
+    canSubmit() : boolean {
+      return this.selectedAddress != null && this.orderGoods.length > 0
+    }
+  },
+  onShow() {
+    uni.$on('addressSelected', (addr : any) => {
+      const data = addr as UTSJSONObject
+      this.selectedAddress = {
+        id: (data.getNumber('id') ?? 0).toInt(),
+        receiverName: data.getString('receiverName') ?? '',
+        receiverPhone: data.getString('receiverPhone') ?? '',
+        province: data.getString('province') ?? '',
+        city: data.getString('city') ?? '',
+        district: data.getString('district') ?? '',
+        detailAddress: data.getString('detailAddress') ?? '',
+        fullAddress: data.getString('fullAddress') ?? '',
+        isDefault: (data.getNumber('isDefault') ?? 0).toInt()
+      } as AddressType
+    })
+  },
+  onUnload() {
+    uni.$off('addressSelected')
+  },
+  onLoad(options : any) {
+    const opts = options as UTSJSONObject
+    const type = opts.get('type') as string | null
+    if (type === 'direct') {
+      this.orderType = 'direct'
+      const productIdStr = opts.get('productId')
+      const skuIdStr = opts.get('skuId')
+      const quantityStr = opts.get('quantity')
+      const productNameStr = opts.get('productName')
+      const skuNameStr = opts.get('skuName')
+      const priceStr = opts.get('price')
+      const productImageStr = opts.get('productImage')
+
+      const productId = parseInt(productIdStr != null ? productIdStr as string : '0')
+      const skuId = parseInt(skuIdStr != null ? skuIdStr as string : '0')
+      const quantity = parseInt(quantityStr != null ? quantityStr as string : '1')
+      const price = parseFloat(priceStr != null ? priceStr as string : '0')
+
+      let productName = ''
+      let skuName = ''
+      let productImage = ''
+      if (productNameStr != null) {
+        const decoded = decodeURIComponent(productNameStr as string)
+        productName = decoded != null ? decoded : ''
+      }
+      if (skuNameStr != null) {
+        const decoded = decodeURIComponent(skuNameStr as string)
+        skuName = decoded != null ? decoded : ''
+      }
+      if (productImageStr != null) {
+        const decoded = decodeURIComponent(productImageStr as string)
+        productImage = decoded != null ? decoded : ''
+      }
+
+      this.directBuyItem = { productId: productId, skuId: skuId, quantity: quantity }
+      this.orderGoods = [{
+        cartId: 0, productId: productId, skuId: skuId, productName: productName,
+        productImage: productImage, skuName: skuName, price: price, quantity: quantity
+      } as OrderGoodsType]
+      this.isLoading = false
+    } else {
+      this.orderType = 'cart'
+      const cartIds = opts.get('cartIds') as string | null
+      if (cartIds != null && cartIds !== '') {
+        this.cartItemIds = cartIds.split(',').map((id : string) : number => parseInt(id))
+      }
+      this.loadCartGoods()
+    }
+    this.loadDefaultAddress()
+  },
+  methods: {
+    goBack() { uni.navigateBack() },
+    loadCartGoods() {
+      this.isLoading = true
+      getCart().then((res) => {
+        const data = res.data as UTSJSONObject
+        const itemsArr = data.getArray('items')
+        const goods : OrderGoodsType[] = []
+        if (itemsArr != null) {
+          for (let i = 0; i < itemsArr.length; i++) {
+            const item = itemsArr[i] as UTSJSONObject
+            const cartId = (item.getNumber('cartId') ?? 0).toInt()
+            if (this.cartItemIds.includes(cartId)) {
+              goods.push({
+                cartId: cartId,
+                productId: (item.getNumber('productId') ?? 0).toInt(),
+                skuId: (item.getNumber('skuId') ?? 0).toInt(),
+                productName: item.getString('productName') ?? '',
+                productImage: item.getString('productImage') ?? '',
+                skuName: item.getString('skuName') ?? '',
+                price: item.getNumber('price') ?? 0,
+                quantity: (item.getNumber('quantity') ?? 0).toInt()
+              } as OrderGoodsType)
+            }
+          }
+        }
+        this.orderGoods = goods
+        this.isLoading = false
+      }).catch((err) => {
+        console.error('获取购物车失败:', err)
+        this.isLoading = false
+        uni.showToast({ title: '加载失败', icon: 'none' })
+      })
+    },
+
+    loadDefaultAddress() {
+      getDefaultAddress().then((res) => {
+        if (res.code === 200) {
+          const data = res.data as UTSJSONObject | null
+          if (data != null) {
+            this.selectedAddress = {
+              id: (data.getNumber('id') ?? 0).toInt(),
+              receiverName: data.getString('receiverName') ?? '',
+              receiverPhone: data.getString('receiverPhone') ?? '',
+              province: data.getString('province') ?? '',
+              city: data.getString('city') ?? '',
+              district: data.getString('district') ?? '',
+              detailAddress: data.getString('detailAddress') ?? '',
+              fullAddress: data.getString('fullAddress') ?? '',
+              isDefault: (data.getNumber('isDefault') ?? 0).toInt()
+            } as AddressType
+          } else {
+            this.selectedAddress = null
+          }
+        }
+      }).catch((err) => {
+        console.error('获取默认地址失败:', err)
+      })
+    },
+    selectAddress() {
+      uni.navigateTo({ url: '/pages/user/address-list?select=1' })
+    },
+    submitOrder() {
+      if (!this.canSubmit) {
+        if (this.selectedAddress == null) {
+          uni.showToast({ title: '请选择收货地址', icon: 'none' })
+        }
+        return
+      }
+      this.isSubmitting = true
+      const address = this.selectedAddress as AddressType
+      const params : OrderCreateParams = {
+        cartItemIds: this.orderType === 'cart' ? this.cartItemIds : null,
+        directBuyItem: this.orderType === 'direct' ? this.directBuyItem : null,
+        receiverName: address.receiverName,
+        receiverPhone: address.receiverPhone,
+        receiverAddress: address.fullAddress,
+        receiverProvince: address.province,
+        receiverCity: address.city,
+        receiverDistrict: address.district,
+        remark: this.remark !== '' ? this.remark : null
+      }
+      createOrder(params).then((res) => {
+        this.isSubmitting = false
+        const orderNo = res.data as string
+        uni.showToast({ title: '订单创建成功', icon: 'success' })
+        setTimeout(() => {
+          uni.redirectTo({ url: '/pages/order/list?status=pending' })
+        }, 1500)
+      }).catch((err) => {
+        this.isSubmitting = false
+        console.error('创建订单失败:', err)
+        uni.showToast({ title: '创建订单失败', icon: 'none' })
+      })
+    }
+  }
+}
+</script>
+
+<style lang="scss" scoped>
+.checkout-page { background-color: #f5f5f5; display: flex; flex-direction: column; flex: 1; }
+.header {
+  background-color: #fff;
+  padding: 12px 16px;
+  padding-top: var(--status-bar-height);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.back-btn { width: 40px; }
+.back-icon { font-size: 20px; color: #333; }
+.page-title { font-size: 17px; font-weight: 700; color: #333; }
+.placeholder { width: 40px; }
+.loading-state { flex: 1; display: flex; align-items: center; justify-content: center; }
+.loading-text { font-size: 14px; color: #999; }
+.content-scroll { flex: 1; }
+.address-section { background-color: #fff; margin: 12px; border-radius: 12px; padding: 16px; }
+.address-card { display: flex; flex-direction: row; align-items: center; }
+.address-icon { font-size: 24px; margin-right: 12px; }
+.address-info { flex: 1; }
+.address-top { display: flex; flex-direction: row; align-items: center; margin-bottom: 8px; }
+.receiver-name { font-size: 16px; font-weight: 700; color: #333; margin-right: 12px; }
+.receiver-phone { font-size: 14px; color: #666; margin-right: 8px; }
+.default-tag { background-color: #0066CC; padding: 2px 6px; border-radius: 4px; }
+.default-tag-text { font-size: 10px; color: #fff; }
+.address-detail { font-size: 14px; color: #666; line-height: 1.4; }
+.arrow-icon { font-size: 16px; color: #ccc; }
+.no-address { display: flex; flex-direction: row; align-items: center; justify-content: center; padding: 20px 0; }
+.no-address-icon { font-size: 24px; color: #0066CC; margin-right: 8px; }
+.no-address-text { font-size: 14px; color: #0066CC; }
+.goods-section { background-color: #fff; margin: 0 12px 12px; border-radius: 12px; padding: 16px; }
+.section-header { display: flex; flex-direction: row; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #f5f5f5; }
+.shop-icon { font-size: 16px; margin-right: 8px; }
+.shop-name { font-size: 14px; font-weight: 700; color: #333; }
+.goods-item { display: flex; flex-direction: row; padding: 12px 0; border-bottom: 1px solid #f5f5f5; }
+.goods-image { width: 80px; height: 80px; border-radius: 8px; margin-right: 12px; background-color: #f5f5f5; }
+.goods-info { flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
+.goods-name { font-size: 14px; color: #333; line-height: 1.4; margin-bottom: 4px; }
+.goods-spec { font-size: 12px; color: #999; margin-bottom: 8px; }
+.goods-bottom { display: flex; flex-direction: row; justify-content: space-between; align-items: center; }
+.goods-price { font-size: 14px; color: #ff4d4f; font-weight: 700; }
+.goods-qty { font-size: 12px; color: #999; }
+.remark-section { background-color: #fff; margin: 0 12px 12px; border-radius: 12px; padding: 16px; display: flex; flex-direction: row; align-items: center; }
+.remark-label { font-size: 14px; color: #333; margin-right: 12px; white-space: nowrap; }
+.remark-input { flex: 1; font-size: 14px; color: #333; }
+.price-section { background-color: #fff; margin: 0 12px 12px; border-radius: 12px; padding: 16px; }
+.price-row { display: flex; flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.price-label { font-size: 14px; color: #666; }
+.price-value { font-size: 14px; color: #333; }
+.bottom-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: #fff;
+  padding: 12px 16px;
+  padding-bottom: 30px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.05);
+}
+.total-info { display: flex; flex-direction: row; align-items: center; }
+.total-label { font-size: 14px; color: #333; }
+.total-price { font-size: 20px; font-weight: 700; color: #ff4d4f; }
+.submit-btn { background-color: #0066CC; color: #fff; font-size: 16px; font-weight: 700; padding: 0 40px; height: 44px; line-height: 44px; border-radius: 22px; border: none; }
+</style>

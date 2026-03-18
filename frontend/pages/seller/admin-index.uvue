@@ -1,0 +1,207 @@
+<template>
+	<view class="page">
+		<view class="header">
+			<text class="title">管理工作台</text>
+			<text class="subtitle">欢迎回来，管理员</text>
+		</view>
+
+		<view class="grid-container">
+			<view class="grid-item" @click="navigateTo('/pages/seller/product-audit')">
+				<view class="icon-box icon-box-audit">
+					<text class="icon">📋</text>
+				</view>
+				<text class="item-name">商品审核</text>
+				<text class="item-desc">处理商家申请</text>
+			</view>
+
+			<view class="grid-item" @click="navigateTo('/pages/seller/admin-users')">
+				<view class="icon-box icon-box-users">
+					<text class="icon">👥</text>
+				</view>
+				<text class="item-name">用户管理</text>
+				<text class="item-desc">管理平台用户</text>
+			</view>
+
+			<view class="grid-item" @click="navigateTo('/pages/seller/admin-statistics')">
+				<view class="icon-box icon-box-stats">
+					<text class="icon">📊</text>
+				</view>
+				<text class="item-name">数据统计</text>
+				<text class="item-desc">查看运营报表</text>
+			</view>
+
+			<view class="grid-item" @click="navigateTo('/pages/admin/reviews')">
+				<view class="icon-box icon-box-reviews">
+					<text class="icon">💬</text>
+				</view>
+				<text class="item-name">评价管理</text>
+				<text class="item-desc">全平台评价管理</text>
+			</view>
+
+			<view class="grid-item grid-item-full" @click="handleSyncVectors">
+				<view class="icon-box icon-box-sync">
+					<text class="icon">🧠</text>
+				</view>
+				<text class="item-name">同步商品向量</text>
+				<text class="item-desc">手动触发向量数据库同步</text>
+			</view>
+		</view>
+
+		<view class="logout-section">
+			<button class="logout-btn" @click="handleLogout">退出登录</button>
+		</view>
+	</view>
+</template>
+
+<script lang="uts">
+	import { syncProductVectors } from '@/api/admin'
+
+	export default {
+		methods: {
+			navigateTo(url : string) {
+				uni.navigateTo({
+					url: url,
+					fail: (err) => {
+						console.error('跳转失败:', err)
+					}
+				})
+			},
+			handleSyncVectors() {
+				uni.showModal({
+					title: '同步商品向量',
+					content: '确认要立即同步商品向量到向量数据库吗？',
+					success: (res) => {
+						if (!res.confirm) return
+						uni.showLoading({ title: '同步中...' })
+						syncProductVectors()
+							.then((res) => {
+								const rawData = res.data as any
+								let count : number | null = null
+								if (typeof rawData == 'number') {
+									count = rawData
+								} else if (rawData != null && typeof rawData == 'object') {
+									const dataObj = rawData as UTSJSONObject
+									count = dataObj.getNumber('data') ?? dataObj.getNumber('count')
+								}
+								const countText = count != null ? `，共同步 ${count} 条` : ''
+								uni.showToast({ title: `同步完成${countText}`, icon: 'success' })
+							})
+							.catch((err) => {
+								console.error('同步商品向量失败:', err)
+								uni.showToast({ title: '同步失败，请稍后重试', icon: 'none' })
+							})
+							.finally(() => {
+								uni.hideLoading()
+							})
+					}
+				})
+			},
+			handleLogout() {
+				uni.showModal({
+					title: '提示',
+					content: '确定要退出登录吗？',
+					success: (res) => {
+						if (res.confirm) {
+							uni.clearStorageSync()
+							uni.reLaunch({ url: '/pages/login/login' })
+						}
+					}
+				})
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	.page {
+		background-color: #f7f8fa;
+		flex: 1;
+		padding: 20px;
+	}
+
+	.header {
+		margin-top: 40px;
+		margin-bottom: 30px;
+		padding: 0 10px;
+	}
+
+	.title {
+		font-size: 24px;
+		font-weight: 700;
+		color: #333;
+	}
+
+	.subtitle {
+		font-size: 14px;
+		color: #999;
+		margin-top: 8px;
+	}
+
+	.grid-container {
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		justify-content: space-between;
+	}
+
+	.grid-item {
+		width: 46%;
+		background-color: #fff;
+		border-radius: 16px;
+		padding: 20px;
+		margin-bottom: 20px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+	}
+
+	.icon-box {
+		width: 50px;
+		height: 50px;
+		border-radius: 12px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin-bottom: 12px;
+	}
+
+	.icon-box-audit { background-color: #e6f7ff; }
+	.icon-box-users { background-color: #f6ffed; }
+	.icon-box-stats { background-color: #fff7e6; }
+	.icon-box-reviews { background-color: #fff0f6; }
+	.icon-box-sync { background-color: #f0f5ff; }
+
+	.grid-item-full {
+		width: 100%;
+	}
+
+	.icon {
+		font-size: 24px;
+	}
+
+	.item-name {
+		font-size: 16px;
+		font-weight: 700;
+		color: #333;
+	}
+
+	.item-desc {
+		font-size: 12px;
+		color: #999;
+		margin-top: 4px;
+	}
+	
+	.logout-section {
+		margin-top: 40px;
+		padding: 0 10px;
+	}
+	
+	.logout-btn {
+		background-color: #fff;
+		color: #ff4d4f;
+		border: 1px solid #ff4d4f;
+		border-radius: 24px;
+		font-size: 16px;
+	}
+</style>

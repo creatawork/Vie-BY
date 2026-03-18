@@ -1,0 +1,216 @@
+<template>
+  <view class="bottom-nav">
+    <view 
+      class="nav-item" 
+      v-for="(item, index) in navList" 
+      :key="index"
+      :class="{ 'nav-item--active': currentNav === item.path }"
+      @click="switchNav(item)"
+    >
+      <text class="nav-icon">{{ currentNav === item.path ? item.activeIcon : item.icon }}</text>
+      <text class="nav-text">{{ item.name }}</text>
+      <view v-if="item.badge && item.badgeCount > 0" class="nav-badge">
+        <text class="badge-text">{{ item.badgeCount > 99 ? '99+' : item.badgeCount }}</text>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+import { getCartCount } from '@/api/cart'
+import { getOrderCount } from '@/api/order'
+
+type NavItemType = {
+  name : string
+  path : string
+  icon : string
+  activeIcon : string
+  badge : boolean
+  badgeCount : number
+}
+
+export default {
+  name: 'BottomNav',
+  data() {
+    return {
+      currentNav: '/pages/index/index',
+      refreshKey: 0,
+      navList: [
+        {
+          name: '首页',
+          path: '/pages/index/index',
+          icon: '🏠',
+          activeIcon: '🏡',
+          badge: false,
+          badgeCount: 0
+        } as NavItemType,
+        {
+          name: '分类',
+          path: '/pages/product/list',
+          icon: '📂',
+          activeIcon: '📁',
+          badge: false,
+          badgeCount: 0
+        } as NavItemType,
+        {
+          name: '购物车',
+          path: '/pages/cart/index',
+          icon: '🛒',
+          activeIcon: '🛍️',
+          badge: true,
+          badgeCount: 0
+        } as NavItemType,
+        {
+          name: '订单',
+          path: '/pages/order/list',
+          icon: '📋',
+          activeIcon: '📄',
+          badge: true,
+          badgeCount: 0
+        } as NavItemType,
+        {
+          name: '我的',
+          path: '/pages/user/profile',
+          icon: '👤',
+          activeIcon: '👨',
+          badge: false,
+          badgeCount: 0
+        } as NavItemType
+      ] as NavItemType[]
+    }
+  },
+  mounted() {
+    this.updateCurrentNav()
+    this.loadBadgeCounts()
+    // 监听页面显示事件，确保返回时刷新状态
+    uni.$on('bottomNavRefresh', () => {
+      this.updateCurrentNav()
+      this.loadBadgeCounts()
+      this.refreshKey++
+    })
+  },
+  unmounted() {
+    uni.$off('bottomNavRefresh')
+  },
+  methods: {
+    /**
+     * 加载购物车和订单数量
+     */
+    loadBadgeCounts() {
+      // 获取购物车数量
+      getCartCount().then((res) => {
+        const count = (res.data as number | null) ?? 0
+        this.navList[2].badgeCount = count as number
+      }).catch((err) => {
+        console.error('获取购物车数量失败:', err)
+      })
+      
+      // 获取待处理订单数量（待付款 + 待收货）
+      getOrderCount().then((res) => {
+        const data = res.data as UTSJSONObject
+        const unpaid = (data.getNumber('unpaid') ?? 0).toInt()
+        const shipped = (data.getNumber('shipped') ?? 0).toInt()
+        this.navList[3].badgeCount = unpaid + shipped
+      }).catch((err) => {
+        console.error('获取订单数量失败:', err)
+      })
+    },
+    /**
+     * 更新当前导航路径
+     */
+    updateCurrentNav() {
+      const pages = getCurrentPages()
+      if (pages.length > 0) {
+        const currentPage = pages[pages.length - 1]
+        this.currentNav = '/' + currentPage.route
+      }
+    },
+    switchNav(item : NavItemType) {
+      if (item.path === this.currentNav) {
+        return
+      }
+      
+      this.currentNav = item.path
+      
+      uni.reLaunch({
+        url: item.path,
+        fail: (err) => {
+          console.error('切换页面失败:', err)
+          uni.navigateTo({
+            url: item.path,
+            fail: (err2) => {
+              console.error('navigateTo 也失败:', err2)
+            }
+          })
+        }
+      })
+    }
+  }
+}
+</script>
+
+<style lang="scss" scoped>
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: row;
+  height: 120rpx;
+  background-color: #FFFFFF;
+  border-top-width: 1rpx;
+  border-top-style: solid;
+  border-top-color: #E5E5E5;
+  z-index: 9999;
+  padding-bottom: 20rpx;
+}
+
+.nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding-top: 8rpx;
+  padding-bottom: 8rpx;
+  background-color: #FFFFFF;
+}
+
+.nav-icon {
+  font-size: 44rpx;
+  margin-bottom: 4rpx;
+}
+
+.nav-text {
+  font-size: 22rpx;
+  color: #999999;
+}
+
+.nav-item--active .nav-text {
+  color: #0066CC;
+  font-weight: 700;
+}
+
+.nav-badge {
+  position: absolute;
+  top: 4rpx;
+  right: 20rpx;
+  min-width: 32rpx;
+  height: 32rpx;
+  background-color: #FF4D4F;
+  border-radius: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 8rpx;
+  padding-right: 8rpx;
+}
+
+.badge-text {
+  color: #FFFFFF;
+  font-size: 18rpx;
+  font-weight: 700;
+}
+</style>

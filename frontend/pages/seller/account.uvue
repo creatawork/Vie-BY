@@ -1,0 +1,855 @@
+<template>
+  <view class="page">
+    <!-- 顶部蓝色背景区域 -->
+    <view class="header-bg">
+      <view class="status-bar"></view>
+      <!-- 导航栏 -->
+      <view class="nav-bar">
+        <view class="nav-back" @click="goBack">
+          <text class="back-arrow">‹</text>
+        </view>
+        <text class="nav-title">商家账户</text>
+        <view class="nav-placeholder"></view>
+      </view>
+
+      <!-- 账户概览卡片 -->
+      <view class="balance-box">
+        <view class="balance-header">
+          <text class="balance-label">可用余额(元)</text>
+          <view class="eye-btn" @click="toggleEye">
+            <text class="eye-text">{{ showBalance ? '隐藏' : '显示' }}</text>
+          </view>
+        </view>
+        <view class="balance-amount">
+          <text class="amount-symbol">¥</text>
+          <text class="amount-num">{{ showBalance ? formatMoney(accountInfo.availableBalance) : '****' }}</text>
+        </view>
+        <view class="balance-actions">
+          <view class="action-btn-primary" @click="handleWithdraw">
+            <text class="action-btn-primary-text">提现</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 主内容区 -->
+    <scroll-view class="main-scroll" scroll-y="true" :show-scrollbar="false" @scrolltolower="loadMore">
+      <!-- 资产统计 -->
+      <view class="stats-card">
+        <view class="stats-item">
+          <text class="stats-num">{{ showBalance ? formatMoney(accountInfo.frozenAmount) : '****' }}</text>
+          <text class="stats-name">冻结金额</text>
+        </view>
+        <view class="stats-divider"></view>
+        <view class="stats-item">
+          <text class="stats-num stats-num-green">{{ showBalance ? formatMoney(accountInfo.totalIncome) : '****' }}</text>
+          <text class="stats-name">累计收入</text>
+        </view>
+        <view class="stats-divider"></view>
+        <view class="stats-item">
+          <text class="stats-num stats-num-orange">{{ showBalance ? formatMoney(accountInfo.totalWithdraw) : '****' }}</text>
+          <text class="stats-name">累计提现</text>
+        </view>
+      </view>
+
+      <!-- 交易记录 -->
+      <view class="record-card">
+        <view class="record-header">
+          <text class="record-title">交易记录</text>
+          <view class="filter-tabs">
+            <text class="filter-tab" :class="{ 'filter-tab-active': currentFilter == 'all' }" @click="changeFilter('all')">全部</text>
+            <text class="filter-tab" :class="{ 'filter-tab-active': currentFilter == 'income' }" @click="changeFilter('income')">收入</text>
+            <text class="filter-tab" :class="{ 'filter-tab-active': currentFilter == 'withdraw' }" @click="changeFilter('withdraw')">提现</text>
+          </view>
+        </view>
+
+        <!-- 加载中 -->
+        <view class="loading-box" v-if="isLoading && transactions.length == 0">
+          <text class="loading-text">加载中...</text>
+        </view>
+
+        <view class="record-list" v-else>
+          <view class="record-item" v-for="(item, index) in transactions" :key="index">
+            <view class="item-icon" :class="getIconClass(item.type)">
+              <text class="icon-text">{{ getIcon(item.type) }}</text>
+            </view>
+            <view class="item-info">
+              <text class="item-title">{{ item.typeDesc }}</text>
+              <text class="item-desc" v-if="item.description != ''">{{ item.description }}</text>
+              <text class="item-time">{{ formatTime(item.createTime) }}</text>
+            </view>
+            <text class="item-amount" :class="{ 'item-amount-income': item.amount > 0 }">{{ item.amount > 0 ? '+' : '' }}{{ formatMoney(item.amount) }}</text>
+          </view>
+        </view>
+
+        <view class="list-footer" v-if="transactions.length > 0">
+          <text class="footer-text" v-if="isLoading">加载中...</text>
+          <text class="footer-text" v-else-if="!hasMore">— 没有更多了 —</text>
+        </view>
+
+        <view class="empty-box" v-if="!isLoading && transactions.length == 0">
+          <text class="empty-icon">📝</text>
+          <text class="empty-text">暂无交易记录</text>
+        </view>
+      </view>
+    </scroll-view>
+
+    <!-- 提现弹窗 -->
+    <view class="modal-mask" v-if="showWithdrawModal" @click="closeWithdrawModal">
+      <view class="modal-content" @click.stop="">
+        <text class="modal-title">提现</text>
+        <view class="withdraw-info">
+          <text class="withdraw-label">可提现金额</text>
+          <text class="withdraw-available">¥{{ formatMoney(accountInfo.availableBalance) }}</text>
+        </view>
+        <view class="withdraw-input-box">
+          <text class="input-prefix">¥</text>
+          <input 
+            class="withdraw-input" 
+            type="digit" 
+            placeholder="请输入提现金额" 
+            v-model="withdrawAmount"
+            @input="onWithdrawInput"
+          />
+          <view class="withdraw-all-btn" @click="withdrawAll">
+            <text class="withdraw-all-text">全部提现</text>
+          </view>
+        </view>
+        <text class="withdraw-tip" v-if="withdrawError != ''">{{ withdrawError }}</text>
+        <text class="withdraw-hint">提现将在1-3个工作日内到账</text>
+        <view class="modal-actions">
+          <view class="modal-btn modal-btn-cancel" @click="closeWithdrawModal">
+            <text class="btn-text">取消</text>
+          </view>
+          <view class="modal-btn modal-btn-confirm" @click="confirmWithdraw">
+            <text class="btn-text-white">确认提现</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+
+<script lang="uts">
+import { getSellerAccount, withdrawBalance, getSellerTransactions, type SellerTransactionParams } from '@/api/seller'
+
+// 账户信息类型
+type AccountInfoType = {
+  availableBalance: number   // 可用余额
+  frozenAmount: number       // 冻结金额
+  totalIncome: number        // 累计收入
+  totalWithdraw: number      // 累计提现
+}
+
+// 交易记录类型
+type TransactionItemType = {
+  id: number
+  transactionNo: string
+  type: string
+  typeDesc: string
+  amount: number
+  balanceAfter: number
+  relatedOrderNo: string
+  description: string
+  createTime: string
+}
+
+export default {
+  data() {
+    return {
+      isLoading: false,
+      showBalance: true,
+      currentFilter: 'all',
+      
+      // 账户信息
+      accountInfo: {
+        availableBalance: 0,
+        frozenAmount: 0,
+        totalIncome: 0,
+        totalWithdraw: 0
+      } as AccountInfoType,
+      
+      // 交易记录
+      transactions: [] as TransactionItemType[],
+      pageNum: 1,
+      pageSize: 10,
+      hasMore: true,
+      
+      // 提现弹窗
+      showWithdrawModal: false,
+      withdrawAmount: '',
+      withdrawError: ''
+    }
+  },
+  onLoad() {
+    this.loadAccountInfo()
+    this.loadTransactions()
+  },
+  onShow() {
+    // 每次显示页面时刷新账户信息
+    this.loadAccountInfo()
+  },
+  methods: {
+    // 加载账户信息
+    loadAccountInfo() {
+      getSellerAccount().then((res) => {
+        const data = res.data as UTSJSONObject
+        this.accountInfo = {
+          availableBalance: data.getNumber('availableBalance') ?? data.getNumber('balance') ?? 0,
+          frozenAmount: data.getNumber('frozenAmount') ?? 0,
+          totalIncome: data.getNumber('totalIncome') ?? 0,
+          totalWithdraw: data.getNumber('totalWithdraw') ?? 0
+        } as AccountInfoType
+      }).catch((err) => {
+        console.error('获取账户信息失败:', err)
+        uni.showToast({ title: '获取账户信息失败', icon: 'none' })
+      })
+    },
+    
+    // 加载交易记录
+    loadTransactions() {
+      if (this.isLoading) return
+      this.isLoading = true
+      
+      let typeParam: string | null = null
+      if (this.currentFilter == 'income') {
+        typeParam = 'INCOME'
+      } else if (this.currentFilter == 'withdraw') {
+        typeParam = 'WITHDRAW'
+      }
+      
+      const params: SellerTransactionParams = {
+        type: typeParam,
+        startDate: null,
+        endDate: null,
+        pageNum: this.pageNum,
+        pageSize: this.pageSize
+      }
+      
+      getSellerTransactions(params).then((res) => {
+        const data = res.data as UTSJSONObject
+        const recordsArr = data.getArray('records')
+        const total = (data.getNumber('total') ?? 0).toInt()
+        
+        if (recordsArr != null) {
+          const newRecords: TransactionItemType[] = []
+          for (let i = 0; i < recordsArr.length; i++) {
+            const item = recordsArr[i] as UTSJSONObject
+            newRecords.push({
+              id: (item.getNumber('id') ?? 0).toInt(),
+              transactionNo: item.getString('transactionNo') ?? '',
+              type: item.getString('type') ?? '',
+              typeDesc: item.getString('typeDesc') ?? this.getTypeDesc(item.getString('type') ?? ''),
+              amount: item.getNumber('amount') ?? 0,
+              balanceAfter: item.getNumber('balanceAfter') ?? 0,
+              relatedOrderNo: item.getString('relatedOrderNo') ?? '',
+              description: item.getString('description') ?? '',
+              createTime: item.getString('createTime') ?? ''
+            } as TransactionItemType)
+          }
+          
+          if (this.pageNum == 1) {
+            this.transactions = newRecords
+          } else {
+            this.transactions = this.transactions.concat(newRecords)
+          }
+          this.hasMore = this.transactions.length < total
+        }
+        this.isLoading = false
+      }).catch((err) => {
+        console.error('获取交易记录失败:', err)
+        this.isLoading = false
+      })
+    },
+    
+    // 获取类型描述
+    getTypeDesc(type: string): string {
+      if (type == 'INCOME' || type == 'ORDER_INCOME') return '订单收入'
+      if (type == 'WITHDRAW') return '提现'
+      if (type == 'REFUND') return '退款'
+      if (type == 'SETTLE') return '结算'
+      return type
+    },
+    
+    // 加载更多
+    loadMore() {
+      if (!this.hasMore || this.isLoading) return
+      this.pageNum++
+      this.loadTransactions()
+    },
+    
+    // 切换筛选
+    changeFilter(filter: string) {
+      if (this.currentFilter == filter) return
+      this.currentFilter = filter
+      this.pageNum = 1
+      this.transactions = [] as TransactionItemType[]
+      this.hasMore = true
+      this.loadTransactions()
+    },
+    
+    // 格式化金额
+    formatMoney(num: number): string {
+      return Math.abs(num).toFixed(2)
+    },
+    
+    // 格式化时间
+    formatTime(timeStr: string): string {
+      if (timeStr.length >= 16) {
+        return timeStr.substring(5, 16)
+      }
+      return timeStr
+    },
+    
+    // 返回上一页
+    goBack() {
+      uni.navigateBack()
+    },
+    
+    // 切换余额显示
+    toggleEye() {
+      this.showBalance = !this.showBalance
+    },
+    
+    // 打开提现弹窗
+    handleWithdraw() {
+      this.showWithdrawModal = true
+      this.withdrawAmount = ''
+      this.withdrawError = ''
+    },
+    
+    // 关闭提现弹窗
+    closeWithdrawModal() {
+      this.showWithdrawModal = false
+      this.withdrawAmount = ''
+      this.withdrawError = ''
+    },
+    
+    // 提现金额输入
+    onWithdrawInput(_e: InputEvent) {
+      this.withdrawError = ''
+      const amount = parseFloat(this.withdrawAmount)
+      if (!isNaN(amount) && amount > this.accountInfo.availableBalance) {
+        this.withdrawError = '提现金额不能超过可用余额'
+      }
+    },
+    
+    // 全部提现
+    withdrawAll() {
+      this.withdrawAmount = this.accountInfo.availableBalance.toFixed(2)
+      this.withdrawError = ''
+    },
+    
+    // 确认提现
+    confirmWithdraw() {
+      if (this.withdrawAmount == '') {
+        this.withdrawError = '请输入提现金额'
+        return
+      }
+      
+      const amount = parseFloat(this.withdrawAmount)
+      if (isNaN(amount) || amount <= 0) {
+        this.withdrawError = '请输入有效的提现金额'
+        return
+      }
+      
+      if (amount > this.accountInfo.availableBalance) {
+        this.withdrawError = '提现金额不能超过可用余额'
+        return
+      }
+      
+      uni.showLoading({ title: '提现中...' })
+      withdrawBalance(amount).then((_res) => {
+        uni.hideLoading()
+        uni.showToast({ title: '提现申请已提交', icon: 'success' })
+        this.closeWithdrawModal()
+        // 刷新账户信息和交易记录
+        this.loadAccountInfo()
+        this.pageNum = 1
+        this.transactions = [] as TransactionItemType[]
+        this.loadTransactions()
+      }).catch((err) => {
+        uni.hideLoading()
+        console.error('提现失败:', err)
+        const errMsg = (err as Error).message
+        if (errMsg.includes('余额不足') || errMsg.includes('2002')) {
+          this.withdrawError = '可用余额不足'
+        } else {
+          uni.showToast({ title: errMsg != '' ? errMsg : '提现失败', icon: 'none' })
+        }
+      })
+    },
+    
+    // 获取图标
+    getIcon(type: string): string {
+      if (type == 'INCOME' || type == 'ORDER_INCOME') return '💰'
+      if (type == 'WITHDRAW') return '💳'
+      if (type == 'REFUND') return '↩️'
+      if (type == 'SETTLE') return '✅'
+      return '📝'
+    },
+    
+    // 获取图标样式类
+    getIconClass(type: string): string {
+      if (type == 'INCOME' || type == 'ORDER_INCOME') return 'item-icon-income'
+      if (type == 'WITHDRAW') return 'item-icon-withdraw'
+      if (type == 'REFUND') return 'item-icon-refund'
+      return ''
+    }
+  }
+}
+</script>
+
+
+<style lang="scss" scoped>
+.page {
+  display: flex;
+  flex-direction: column;
+  background-color: #F5F7FA;
+  height: 100%;
+}
+
+.header-bg {
+  background-color: #0066CC;
+  padding-bottom: 80rpx;
+}
+
+.status-bar {
+  height: var(--status-bar-height);
+}
+
+.nav-bar {
+  height: 88rpx;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24rpx;
+}
+
+.nav-back {
+  width: 80rpx;
+  height: 80rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.back-arrow {
+  font-size: 56rpx;
+  color: #FFFFFF;
+  font-weight: 400;
+}
+
+.nav-title {
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #FFFFFF;
+}
+
+.nav-placeholder {
+  width: 80rpx;
+}
+
+.balance-box {
+  padding: 32rpx;
+}
+
+.balance-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16rpx;
+}
+
+.balance-label {
+  font-size: 26rpx;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.eye-btn {
+  padding: 8rpx 16rpx;
+}
+
+.eye-text {
+  font-size: 24rpx;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.balance-amount {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  margin-bottom: 40rpx;
+}
+
+.amount-symbol {
+  font-size: 36rpx;
+  color: #FFFFFF;
+  font-weight: 700;
+  margin-right: 8rpx;
+  margin-bottom: 12rpx;
+}
+
+.amount-num {
+  font-size: 72rpx;
+  color: #FFFFFF;
+  font-weight: 700;
+}
+
+.balance-actions {
+  display: flex;
+  flex-direction: row;
+}
+
+.action-btn-primary {
+  flex: 1;
+  height: 80rpx;
+  background-color: #FFFFFF;
+  border-radius: 40rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-btn-primary-text {
+  font-size: 28rpx;
+  color: #0066CC;
+  font-weight: 700;
+}
+
+.main-scroll {
+  flex: 1;
+  margin-top: -48rpx;
+}
+
+.stats-card {
+  margin: 0 32rpx 24rpx;
+  background-color: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 32rpx;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-around;
+}
+
+.stats-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stats-num {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #1A1A1A;
+  margin-bottom: 8rpx;
+}
+
+.stats-num-green {
+  color: #52C41A;
+}
+
+.stats-num-orange {
+  color: #FF7A45;
+}
+
+.stats-name {
+  font-size: 24rpx;
+  color: #999999;
+}
+
+.stats-divider {
+  width: 2rpx;
+  height: 60rpx;
+  background-color: #F0F0F0;
+}
+
+.record-card {
+  margin: 0 32rpx 32rpx;
+  background-color: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 32rpx;
+}
+
+.record-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24rpx;
+}
+
+.record-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #1A1A1A;
+}
+
+.filter-tabs {
+  display: flex;
+  flex-direction: row;
+  background-color: #F5F7FA;
+  border-radius: 8rpx;
+  padding: 4rpx;
+}
+
+.filter-tab {
+  font-size: 24rpx;
+  color: #666666;
+  padding: 8rpx 20rpx;
+  border-radius: 6rpx;
+}
+
+.filter-tab-active {
+  background-color: #0066CC;
+  color: #FFFFFF;
+}
+
+.loading-box {
+  padding: 60rpx 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-text {
+  font-size: 28rpx;
+  color: #999999;
+}
+
+.record-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.record-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 24rpx 0;
+  border-bottom: 1rpx solid #F5F5F5;
+}
+
+.item-icon {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 24rpx;
+  background-color: #F5F7FA;
+}
+
+.item-icon-income {
+  background-color: #E6F7E6;
+}
+
+.item-icon-withdraw {
+  background-color: #FFF2E8;
+}
+
+.item-icon-refund {
+  background-color: #E8F4FF;
+}
+
+.icon-text {
+  font-size: 36rpx;
+}
+
+.item-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.item-title {
+  font-size: 28rpx;
+  color: #1A1A1A;
+  margin-bottom: 4rpx;
+}
+
+.item-desc {
+  font-size: 24rpx;
+  color: #666666;
+  margin-bottom: 4rpx;
+}
+
+.item-time {
+  font-size: 24rpx;
+  color: #999999;
+}
+
+.item-amount {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #1A1A1A;
+}
+
+.item-amount-income {
+  color: #52C41A;
+}
+
+.list-footer {
+  padding: 32rpx 0;
+  display: flex;
+  justify-content: center;
+}
+
+.footer-text {
+  font-size: 24rpx;
+  color: #CCCCCC;
+}
+
+.empty-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 80rpx 0;
+}
+
+.empty-icon {
+  font-size: 80rpx;
+  margin-bottom: 16rpx;
+}
+
+.empty-text {
+  font-size: 28rpx;
+  color: #999999;
+}
+
+/* 提现弹窗样式 */
+.modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+
+.modal-content {
+  width: 600rpx;
+  background-color: #FFFFFF;
+  border-radius: 24rpx;
+  padding: 40rpx;
+}
+
+.modal-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #1A1A1A;
+  text-align: center;
+  margin-bottom: 32rpx;
+}
+
+.withdraw-info {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24rpx;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #F5F5F5;
+}
+
+.withdraw-label {
+  font-size: 28rpx;
+  color: #666666;
+}
+
+.withdraw-available {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #52C41A;
+}
+
+.withdraw-input-box {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  background-color: #F5F7FA;
+  border-radius: 12rpx;
+  padding: 0 24rpx;
+  margin-bottom: 16rpx;
+}
+
+.input-prefix {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #1A1A1A;
+  margin-right: 8rpx;
+}
+
+.withdraw-input {
+  flex: 1;
+  height: 88rpx;
+  font-size: 32rpx;
+  color: #1A1A1A;
+}
+
+.withdraw-all-btn {
+  padding: 12rpx 20rpx;
+  background-color: #E6F0FF;
+  border-radius: 8rpx;
+}
+
+.withdraw-all-text {
+  font-size: 24rpx;
+  color: #0066CC;
+}
+
+.withdraw-tip {
+  font-size: 24rpx;
+  color: #FF4D4F;
+  margin-bottom: 8rpx;
+}
+
+.withdraw-hint {
+  font-size: 24rpx;
+  color: #999999;
+  margin-bottom: 32rpx;
+}
+
+.modal-actions {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+.modal-btn {
+  flex: 1;
+  height: 88rpx;
+  border-radius: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-btn-cancel {
+  background-color: #F5F7FA;
+  margin-right: 24rpx;
+}
+
+.modal-btn-confirm {
+  background-color: #0066CC;
+}
+
+.btn-text {
+  font-size: 30rpx;
+  color: #666666;
+}
+
+.btn-text-white {
+  font-size: 30rpx;
+  color: #FFFFFF;
+  font-weight: 700;
+}
+</style>

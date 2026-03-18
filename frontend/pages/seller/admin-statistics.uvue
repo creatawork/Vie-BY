@@ -1,0 +1,556 @@
+<template>
+	<scroll-view class="page" scroll-y>
+		<!-- 顶部数据卡片 -->
+		<view class="top-cards">
+			<view class="data-card card-1">
+				<view class="card-header">
+					<text class="card-title">用户</text>
+					<text class="card-icon">👥</text>
+				</view>
+				<text class="card-number">{{ overview.totalUsers }}</text>
+				<view class="card-footer">
+					<text class="footer-label">活跃用户</text>
+					<text class="footer-value">{{ overview.activeUsers }}</text>
+				</view>
+			</view>
+
+			<view class="data-card card-2">
+				<view class="card-header">
+					<text class="card-title">商品</text>
+					<text class="card-icon">🛍️</text>
+				</view>
+				<text class="card-number">{{ overview.totalProducts }}</text>
+				<view class="card-footer">
+					<text class="footer-label">在售</text>
+					<text class="footer-value">{{ overview.onlineProducts }}</text>
+				</view>
+			</view>
+
+			<view class="data-card card-3">
+				<view class="card-header">
+					<text class="card-title">订单</text>
+					<text class="card-icon">📦</text>
+				</view>
+				<text class="card-number">{{ overview.totalOrders }}</text>
+				<view class="card-footer">
+					<text class="footer-label">已完成</text>
+					<text class="footer-value">{{ overview.completedOrders }}</text>
+				</view>
+			</view>
+
+			<view class="data-card card-4">
+				<view class="card-header">
+					<text class="card-title">待审核</text>
+					<text class="card-icon">⚠️</text>
+				</view>
+				<text class="card-number">{{ overview.pendingProducts }}</text>
+				<view class="card-footer">
+					<text class="footer-label">需处理</text>
+					<text class="footer-value">{{ overview.pendingProducts }}</text>
+				</view>
+			</view>
+		</view>
+
+		<!-- 商品分析 -->
+		<view class="analysis-section">
+			<view class="section-title-bar">
+				<text class="section-title">商品分析</text>
+				<text class="section-total">总计 {{ getTotalProducts() }}</text>
+			</view>
+			<view class="analysis-card">
+				<view class="analysis-item">
+					<view class="item-left">
+						<view class="item-indicator ind-orange"></view>
+						<text class="item-name">待审核</text>
+					</view>
+					<view class="item-right">
+						<text class="item-number">{{ productDist.pending }}</text>
+						<text class="item-percent">{{ getPercentage(productDist.pending, getTotalProducts()) }}</text>
+					</view>
+				</view>
+				<view class="progress-track">
+					<view class="progress-bar bar-orange" :style="{width: getPercentage(productDist.pending, getTotalProducts())}"></view>
+				</view>
+
+				<view class="analysis-item">
+					<view class="item-left">
+						<view class="item-indicator ind-green"></view>
+						<text class="item-name">已上架</text>
+					</view>
+					<view class="item-right">
+						<text class="item-number">{{ productDist.online }}</text>
+						<text class="item-percent">{{ getPercentage(productDist.online, getTotalProducts()) }}</text>
+					</view>
+				</view>
+				<view class="progress-track">
+					<view class="progress-bar bar-green" :style="{width: getPercentage(productDist.online, getTotalProducts())}"></view>
+				</view>
+
+				<view class="analysis-item">
+					<view class="item-left">
+						<view class="item-indicator ind-gray"></view>
+						<text class="item-name">已下架</text>
+					</view>
+					<view class="item-right">
+						<text class="item-number">{{ productDist.offline }}</text>
+						<text class="item-percent">{{ getPercentage(productDist.offline, getTotalProducts()) }}</text>
+					</view>
+				</view>
+				<view class="progress-track">
+					<view class="progress-bar bar-gray" :style="{width: getPercentage(productDist.offline, getTotalProducts())}"></view>
+				</view>
+
+				<view class="analysis-item">
+					<view class="item-left">
+						<view class="item-indicator ind-red"></view>
+						<text class="item-name">审核不通过</text>
+					</view>
+					<view class="item-right">
+						<text class="item-number">{{ productDist.rejected }}</text>
+						<text class="item-percent">{{ getPercentage(productDist.rejected, getTotalProducts()) }}</text>
+					</view>
+				</view>
+				<view class="progress-track">
+					<view class="progress-bar bar-red" :style="{width: getPercentage(productDist.rejected, getTotalProducts())}"></view>
+				</view>
+			</view>
+		</view>
+
+		<!-- 订单分析 -->
+		<view class="analysis-section">
+			<view class="section-title-bar">
+				<text class="section-title">订单分析</text>
+				<text class="section-total">总计 {{ getTotalOrders() }}</text>
+			</view>
+			<view class="analysis-card">
+				<view class="analysis-item">
+					<view class="item-left">
+						<view class="item-indicator ind-orange"></view>
+						<text class="item-name">待支付</text>
+					</view>
+					<view class="item-right">
+						<text class="item-number">{{ orderDist.unpaid }}</text>
+						<text class="item-percent">{{ getPercentage(orderDist.unpaid, getTotalOrders()) }}</text>
+					</view>
+				</view>
+				<view class="progress-track">
+					<view class="progress-bar bar-orange" :style="{width: getPercentage(orderDist.unpaid, getTotalOrders())}"></view>
+				</view>
+
+				<view class="analysis-item">
+					<view class="item-left">
+						<view class="item-indicator ind-blue"></view>
+						<text class="item-name">待发货</text>
+					</view>
+					<view class="item-right">
+						<text class="item-number">{{ orderDist.unshipped }}</text>
+						<text class="item-percent">{{ getPercentage(orderDist.unshipped, getTotalOrders()) }}</text>
+					</view>
+				</view>
+				<view class="progress-track">
+					<view class="progress-bar bar-blue" :style="{width: getPercentage(orderDist.unshipped, getTotalOrders())}"></view>
+				</view>
+
+				<view class="analysis-item">
+					<view class="item-left">
+						<view class="item-indicator ind-purple"></view>
+						<text class="item-name">待收货</text>
+					</view>
+					<view class="item-right">
+						<text class="item-number">{{ orderDist.shipped }}</text>
+						<text class="item-percent">{{ getPercentage(orderDist.shipped, getTotalOrders()) }}</text>
+					</view>
+				</view>
+				<view class="progress-track">
+					<view class="progress-bar bar-purple" :style="{width: getPercentage(orderDist.shipped, getTotalOrders())}"></view>
+				</view>
+
+				<view class="analysis-item">
+					<view class="item-left">
+						<view class="item-indicator ind-green"></view>
+						<text class="item-name">已完成</text>
+					</view>
+					<view class="item-right">
+						<text class="item-number">{{ orderDist.completed }}</text>
+						<text class="item-percent">{{ getPercentage(orderDist.completed, getTotalOrders()) }}</text>
+					</view>
+				</view>
+				<view class="progress-track">
+					<view class="progress-bar bar-green" :style="{width: getPercentage(orderDist.completed, getTotalOrders())}"></view>
+				</view>
+
+				<view class="analysis-item">
+					<view class="item-left">
+						<view class="item-indicator ind-gray"></view>
+						<text class="item-name">已取消</text>
+					</view>
+					<view class="item-right">
+						<text class="item-number">{{ orderDist.cancelled }}</text>
+						<text class="item-percent">{{ getPercentage(orderDist.cancelled, getTotalOrders()) }}</text>
+					</view>
+				</view>
+				<view class="progress-track">
+					<view class="progress-bar bar-gray" :style="{width: getPercentage(orderDist.cancelled, getTotalOrders())}"></view>
+				</view>
+			</view>
+		</view>
+	</scroll-view>
+</template>
+
+<script lang="uts">
+	import { getAdminOverview, getProductDistribution, getOrderDistribution } from '@/api/admin'
+	import type { ResponseDataType } from '@/utils/request'
+
+	type OverviewType = {
+		totalUsers: number
+		activeUsers: number
+		totalProducts: number
+		pendingProducts: number
+		onlineProducts: number
+		totalOrders: number
+		completedOrders: number
+		pendingOrders: number
+	}
+
+	type ProductDistType = {
+		pending: number
+		online: number
+		offline: number
+		rejected: number
+	}
+
+	type OrderDistType = {
+		unpaid: number
+		unshipped: number
+		shipped: number
+		completed: number
+		cancelled: number
+	}
+
+	export default {
+		data() {
+			return {
+				overview: {
+					totalUsers: 0,
+					activeUsers: 0,
+					totalProducts: 0,
+					pendingProducts: 0,
+					onlineProducts: 0,
+					totalOrders: 0,
+					completedOrders: 0,
+					pendingOrders: 0
+				} as OverviewType,
+				productDist: {
+					pending: 0,
+					online: 0,
+					offline: 0,
+					rejected: 0
+				} as ProductDistType,
+				orderDist: {
+					unpaid: 0,
+					unshipped: 0,
+					shipped: 0,
+					completed: 0,
+					cancelled: 0
+				} as OrderDistType
+			}
+		},
+		onLoad() {
+			this.loadData()
+		},
+		methods: {
+			loadData() {
+				this.loadOverview()
+				this.loadProductDist()
+				this.loadOrderDist()
+			},
+			loadOverview() {
+				getAdminOverview().then((res : ResponseDataType) => {
+					if (res.code === 200 && res.data != null) {
+						const data = res.data as UTSJSONObject
+						this.overview = {
+							totalUsers: (data.getNumber('totalUsers') ?? 0).toInt(),
+							activeUsers: (data.getNumber('activeUsers') ?? 0).toInt(),
+							totalProducts: (data.getNumber('totalProducts') ?? 0).toInt(),
+							pendingProducts: (data.getNumber('pendingProducts') ?? 0).toInt(),
+							onlineProducts: (data.getNumber('onlineProducts') ?? 0).toInt(),
+							totalOrders: (data.getNumber('totalOrders') ?? 0).toInt(),
+							completedOrders: (data.getNumber('completedOrders') ?? 0).toInt(),
+							pendingOrders: (data.getNumber('pendingOrders') ?? 0).toInt()
+						} as OverviewType
+					}
+				}).catch((err : Any | null) => {
+					const error = err as Error
+					uni.showToast({
+						title: error.message,
+						icon: 'none'
+					})
+				})
+			},
+			loadProductDist() {
+				getProductDistribution().then((res : ResponseDataType) => {
+					if (res.code === 200 && res.data != null) {
+						const data = res.data as UTSJSONObject
+						this.productDist = {
+							pending: (data.getNumber('pending') ?? 0).toInt(),
+							online: (data.getNumber('online') ?? 0).toInt(),
+							offline: (data.getNumber('offline') ?? 0).toInt(),
+							rejected: (data.getNumber('rejected') ?? 0).toInt()
+						} as ProductDistType
+					}
+				}).catch((err : Any | null) => {
+					console.error('加载商品分布失败:', err)
+				})
+			},
+			loadOrderDist() {
+				getOrderDistribution().then((res : ResponseDataType) => {
+					if (res.code === 200 && res.data != null) {
+						const data = res.data as UTSJSONObject
+						this.orderDist = {
+							unpaid: (data.getNumber('unpaid') ?? 0).toInt(),
+							unshipped: (data.getNumber('unshipped') ?? 0).toInt(),
+							shipped: (data.getNumber('shipped') ?? 0).toInt(),
+							completed: (data.getNumber('completed') ?? 0).toInt(),
+							cancelled: (data.getNumber('cancelled') ?? 0).toInt()
+						} as OrderDistType
+					}
+				}).catch((err : Any | null) => {
+					console.error('加载订单分布失败:', err)
+				})
+			},
+			getTotalProducts() : number {
+				return this.productDist.pending + this.productDist.online + this.productDist.offline + this.productDist.rejected
+			},
+			getTotalOrders() : number {
+				return this.orderDist.unpaid + this.orderDist.unshipped + this.orderDist.shipped + this.orderDist.completed + this.orderDist.cancelled
+			},
+			getPercentage(value : number, total : number) : string {
+				if (total === 0) return '0%'
+				const percent = (value / total * 100).toFixed(0)
+				return `${percent}%`
+			}
+		}
+	}
+</script>
+
+<style lang="scss" scoped>
+	.page {
+		background-color: #f7f8fa;
+		padding: 15px;
+	}
+
+	/* 顶部数据卡片 */
+	.top-cards {
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		margin-bottom: 20px;
+	}
+
+	.data-card {
+		width: 23%;
+		background-color: #ffffff;
+		border-radius: 12px;
+		padding: 12px;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+	}
+
+	.card-1 {
+		border-top: 3px solid #3b82f6;
+	}
+
+	.card-2 {
+		border-top: 3px solid #10b981;
+	}
+
+	.card-3 {
+		border-top: 3px solid #f59e0b;
+	}
+
+	.card-4 {
+		border-top: 3px solid #ef4444;
+	}
+
+	.card-header {
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 8px;
+	}
+
+	.card-title {
+		font-size: 12px;
+		color: #6b7280;
+	}
+
+	.card-icon {
+		font-size: 18px;
+	}
+
+	.card-number {
+		font-size: 24px;
+		font-weight: bold;
+		color: #111827;
+		display: flex;
+		margin-bottom: 6px;
+	}
+
+	.card-footer {
+		display: flex;
+		flex-direction: column;
+		padding-top: 6px;
+		border-top: 1px solid #f3f4f6;
+	}
+
+	.footer-label {
+		font-size: 11px;
+		color: #9ca3af;
+		margin-bottom: 2px;
+	}
+
+	.footer-value {
+		font-size: 13px;
+		font-weight: bold;
+		color: #6b7280;
+	}
+
+	/* 分析区域 */
+	.analysis-section {
+		margin-bottom: 20px;
+	}
+
+	.section-title-bar {
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 12px;
+	}
+
+	.section-title {
+		font-size: 18px;
+		font-weight: bold;
+		color: #111827;
+	}
+
+	.section-total {
+		font-size: 14px;
+		color: #6b7280;
+	}
+
+	.analysis-card {
+		background-color: #ffffff;
+		border-radius: 16px;
+		padding: 16px;
+		box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+	}
+
+	.analysis-item {
+		display: flex;
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 8px;
+	}
+
+	.item-left {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.item-indicator {
+		width: 12px;
+		height: 12px;
+		border-radius: 6px;
+		margin-right: 10px;
+	}
+
+	.ind-blue {
+		background-color: #3b82f6;
+	}
+
+	.ind-green {
+		background-color: #10b981;
+	}
+
+	.ind-orange {
+		background-color: #f59e0b;
+	}
+
+	.ind-red {
+		background-color: #ef4444;
+	}
+
+	.ind-gray {
+		background-color: #9ca3af;
+	}
+
+	.ind-purple {
+		background-color: #8b5cf6;
+	}
+
+	.item-name {
+		font-size: 15px;
+		color: #374151;
+	}
+
+	.item-right {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.item-number {
+		font-size: 16px;
+		font-weight: bold;
+		color: #111827;
+		margin-right: 8px;
+	}
+
+	.item-percent {
+		font-size: 13px;
+		color: #9ca3af;
+		min-width: 40px;
+		text-align: right;
+	}
+
+	.progress-track {
+		height: 6px;
+		background-color: #f3f4f6;
+		border-radius: 3px;
+		margin-bottom: 16px;
+		overflow: hidden;
+	}
+
+	.progress-bar {
+		height: 100%;
+		border-radius: 3px;
+	}
+
+	.bar-blue {
+		background-color: #3b82f6;
+	}
+
+	.bar-green {
+		background-color: #10b981;
+	}
+
+	.bar-orange {
+		background-color: #f59e0b;
+	}
+
+	.bar-red {
+		background-color: #ef4444;
+	}
+
+	.bar-gray {
+		background-color: #9ca3af;
+	}
+
+	.bar-purple {
+		background-color: #8b5cf6;
+	}
+</style>
+

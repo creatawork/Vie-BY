@@ -1,0 +1,280 @@
+<template>
+	<view class="pay-page">
+		<!-- 导航栏 -->
+		<view class="nav-bar">
+			<view class="nav-back" @click="goBack">
+				<text class="back-icon">‹</text>
+			</view>
+			<text class="nav-title">订单支付</text>
+			<view class="nav-placeholder"></view>
+		</view>
+
+		<!-- 支付金额 -->
+		<view class="amount-section">
+			<text class="amount-label">支付金额</text>
+			<view class="amount-row">
+				<text class="amount-symbol">¥</text>
+				<text class="amount-value">{{ payAmount.toFixed(2) }}</text>
+			</view>
+			<text class="order-no">订单号：{{ orderNo }}</text>
+		</view>
+
+		<!-- 余额信息 -->
+		<view class="wallet-section">
+			<view class="wallet-card">
+				<view class="wallet-icon">
+					<text class="icon-text">💰</text>
+				</view>
+				<view class="wallet-info">
+					<text class="wallet-title">账户余额支付</text>
+					<text class="wallet-balance">可用余额：¥{{ walletBalance.toFixed(2) }}</text>
+				</view>
+			</view>
+			
+			<view class="balance-tip" v-if="walletBalance < payAmount">
+				<text class="tip-icon">⚠️</text>
+				<text class="tip-text">余额不足，请先充值</text>
+				<view class="recharge-btn" @click="goRecharge">
+					<text class="recharge-text">去充值</text>
+				</view>
+			</view>
+		</view>
+
+		<!-- 底部支付按钮 -->
+		<view class="bottom-bar">
+			<view class="pay-btn" :class="{ 'pay-btn-disabled': isPaying || walletBalance < payAmount }" @click="handlePay">
+				<text class="pay-btn-text">{{ isPaying ? '支付中...' : '确认支付 ¥' + payAmount.toFixed(2) }}</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script lang="uts">
+import { payOrder } from '@/api/order'
+import { getWallet } from '@/api/wallet'
+
+export default {
+	data() {
+		return {
+			orderId: 0,
+			orderNo: '',
+			payAmount: 0,
+			walletBalance: 0,
+			isPaying: false
+		}
+	},
+	onLoad(options : any) {
+		const opts = options as UTSJSONObject
+		this.orderId = parseInt(opts.getString('orderId') ?? '0')
+		this.orderNo = opts.getString('orderNo') ?? ''
+		this.payAmount = parseFloat(opts.getString('amount') ?? '0')
+	},
+	onShow() {
+		this.loadWalletBalance()
+	},
+	methods: {
+		goBack() {
+			uni.navigateBack()
+		},
+		loadWalletBalance() {
+			getWallet().then((res) => {
+				const data = res.data as UTSJSONObject
+				this.walletBalance = data.getNumber('balance') ?? 0
+			}).catch((_err) => {
+				this.walletBalance = 0
+			})
+		},
+		goRecharge() {
+			uni.navigateTo({ url: '/pages/user/wallet' })
+		},
+		handlePay() {
+			if (this.isPaying) return
+			if (this.walletBalance < this.payAmount) {
+				uni.showToast({ title: '余额不足，请先充值', icon: 'none' })
+				return
+			}
+			
+			this.isPaying = true
+			uni.showLoading({ title: '支付中...' })
+			
+			payOrder(this.orderId).then((_res) => {
+				uni.hideLoading()
+				this.isPaying = false
+				uni.showToast({ title: '支付成功', icon: 'success' })
+				setTimeout(() => {
+					uni.navigateBack({ delta: 1 })
+				}, 1500)
+			}).catch((err) => {
+				uni.hideLoading()
+				this.isPaying = false
+				console.error('支付失败:', err)
+				uni.showToast({ title: '支付失败，请重试', icon: 'none' })
+			})
+		}
+	}
+}
+</script>
+
+<style lang="scss" scoped>
+.pay-page {
+	background-color: #f5f5f5;
+	min-height: 1500rpx;
+	display: flex;
+	flex-direction: column;
+}
+.nav-bar {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	height: 88rpx;
+	background-color: #fff;
+	padding: 0 20rpx;
+	padding-top: var(--status-bar-height);
+}
+.nav-back {
+	width: 80rpx;
+	height: 80rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.back-icon {
+	font-size: 48rpx;
+	color: #333;
+}
+.nav-title {
+	font-size: 32rpx;
+	font-weight: 700;
+	color: #333;
+}
+.nav-placeholder {
+	width: 80rpx;
+}
+.amount-section {
+	background-color: #0066CC;
+	padding: 60rpx 40rpx;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+}
+.amount-label {
+	font-size: 28rpx;
+	color: rgba(255, 255, 255, 0.8);
+	margin-bottom: 20rpx;
+}
+.amount-row {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-end;
+	margin-bottom: 20rpx;
+}
+.amount-symbol {
+	font-size: 36rpx;
+	color: #fff;
+	font-weight: 700;
+	margin-right: 8rpx;
+	margin-bottom: 8rpx;
+}
+.amount-value {
+	font-size: 72rpx;
+	color: #fff;
+	font-weight: 700;
+}
+.order-no {
+	font-size: 24rpx;
+	color: rgba(255, 255, 255, 0.7);
+}
+.wallet-section {
+	background-color: #fff;
+	margin: 20rpx;
+	border-radius: 16rpx;
+	padding: 30rpx;
+}
+.wallet-card {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+}
+.wallet-icon {
+	width: 80rpx;
+	height: 80rpx;
+	border-radius: 16rpx;
+	background-color: #FFF3E0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-right: 24rpx;
+}
+.icon-text {
+	font-size: 40rpx;
+}
+.wallet-info {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+}
+.wallet-title {
+	font-size: 30rpx;
+	color: #333;
+	font-weight: bold;
+	margin-bottom: 8rpx;
+}
+.wallet-balance {
+	font-size: 26rpx;
+	color: #666;
+}
+.balance-tip {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	margin-top: 24rpx;
+	padding: 20rpx;
+	background-color: #FFF8E1;
+	border-radius: 12rpx;
+}
+.tip-icon {
+	font-size: 28rpx;
+	margin-right: 12rpx;
+}
+.tip-text {
+	flex: 1;
+	font-size: 26rpx;
+	color: #F57C00;
+}
+.recharge-btn {
+	padding: 12rpx 24rpx;
+	background-color: #0066CC;
+	border-radius: 24rpx;
+}
+.recharge-text {
+	font-size: 24rpx;
+	color: #fff;
+}
+.bottom-bar {
+	position: fixed;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	padding: 20rpx 30rpx;
+	padding-bottom: 40rpx;
+	background-color: #fff;
+	box-shadow: 0 -2rpx 10rpx rgba(0, 0, 0, 0.05);
+}
+.pay-btn {
+	height: 88rpx;
+	background-color: #0066CC;
+	border-radius: 44rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.pay-btn-disabled {
+	background-color: #ccc;
+}
+.pay-btn-text {
+	font-size: 32rpx;
+	color: #fff;
+	font-weight: bold;
+}
+</style>

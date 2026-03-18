@@ -1,0 +1,136 @@
+/**
+ * HTTP 请求工具类
+ * 统一处理所有 API 请求
+ */
+
+// API 基础配置
+export const API_BASE_URL = 'http://23.247.129.117/api'
+const REQUEST_TIMEOUT = 20000
+
+// 响应数据类型
+export type ResponseDataType = {
+	code : number
+	message : string
+	data : any | null
+	timestamp : number | null
+}
+
+/**
+ * 统一的HTTP请求方法
+ */
+export function request(url : string, method : string, requestData : any | null) : Promise<ResponseDataType> {
+	return new Promise((resolve, reject) => {
+		// 获取存储的 Token
+		const token = uni.getStorageSync('auth_token') as string | null
+
+		// 构建请求头
+		let finalHeader : UTSJSONObject
+		if (token != null && token !== '') {
+			finalHeader = {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${token}`
+			} as UTSJSONObject
+		} else {
+			finalHeader = {
+				'Content-Type': 'application/json'
+			} as UTSJSONObject
+		}
+
+		__f__('log','at utils/request.ts:39','HTTP 请求:', `${API_BASE_URL}${url}`)
+		__f__('log','at utils/request.ts:40','请求方法:', method)
+		if (requestData != null) {
+			__f__('log','at utils/request.ts:42','请求数据:', JSON.stringify(requestData))
+		}
+		if (token != null && token !== '') {
+			__f__('log','at utils/request.ts:45','Token:', token.substring(0, 20) + '...')
+		} else {
+			__f__('log','at utils/request.ts:47','Token: 无')
+		}
+
+		// 构建请求选项对象
+		const reqOpts : RequestOptions<UTSJSONObject> = {
+			url: `${API_BASE_URL}${url}`,
+			method: method,
+			data: requestData as UTSJSONObject | null,
+			header: finalHeader,
+			timeout: REQUEST_TIMEOUT,
+			success: function(res : RequestSuccess<UTSJSONObject>) {
+				const resObj = res.data as UTSJSONObject
+				const code = (resObj.getNumber('code') ?? 0).toInt()
+				const message = resObj.getString('message') ?? ''
+				const resData = resObj.getAny('data')
+				const timestamp = resObj.getNumber('timestamp')
+
+				const result : ResponseDataType = {
+					code: code,
+					message: message,
+					data: resData,
+					timestamp: timestamp != null ? timestamp.toInt() : null
+				}
+
+				__f__('log','at utils/request.ts:71','HTTP 响应:', code, message)
+
+				// 处理 401 未认证
+				if (code == 401) {
+					uni.removeStorageSync('auth_token')
+					uni.removeStorageSync('user_info')
+					uni.navigateTo({
+						url: '/pages/login/login'
+					})
+					reject(new Error('认证过期，请重新登录'))
+					return
+				}
+
+				// 处理 403 无权限
+				if (code == 403) {
+					reject(new Error('您没有权限执行此操作'))
+					return
+				}
+
+				// 处理其他错误
+				if (code != 200) {
+					const errMsg = message != '' ? message : '请求失败'
+					reject(new Error(errMsg))
+					return
+				}
+
+				resolve(result)
+			},
+			fail: function(err : RequestFail) {
+				__f__('error','at utils/request.ts:100','请求失败:', err.errMsg)
+				reject(new Error('网络请求失败，请检查网络连接'))
+			}
+		}
+
+		// 显式指定泛型，避免类型推断为 Any
+		uni.request<UTSJSONObject>(reqOpts as RequestOptions<UTSJSONObject>)
+	})
+}
+
+/**
+ * GET 请求
+ */
+export function get(url : string) : Promise<ResponseDataType> {
+	return request(url, 'GET', null)
+}
+
+/**
+ * POST 请求
+ */
+export function post(url : string, data : any | null) : Promise<ResponseDataType> {
+	return request(url, 'POST', data)
+}
+
+/**
+ * PUT 请求
+ */
+export function put(url : string, data : any | null) : Promise<ResponseDataType> {
+	return request(url, 'PUT', data)
+}
+
+/**
+ * DELETE 请求
+ */
+export function del(url : string) : Promise<ResponseDataType> {
+	return request(url, 'DELETE', null)
+}

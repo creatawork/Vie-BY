@@ -1,0 +1,160 @@
+{
+  "version": "1",
+  "env": {
+    "compiler_version": "4.66"
+  },
+  "files": {
+    "pages/register/register.kt": {
+      "class": "GenPagesRegisterRegister",
+      "md5": "dcf6517307c7e1d99b2933dfb49b5dce4aa596ad"
+    },
+    "components/BottomNav.kt": {
+      "class": "GenComponentsBottomNav",
+      "md5": "98e35575256019e05e58780b477b05891eb5db0b"
+    },
+    "pages/order/detail.kt": {
+      "md5": "63a02c749c75425eb8d410a993641ed5c72c016c",
+      "class": "GenPagesOrderDetail"
+    },
+    "pages/product/reviews.kt": {
+      "md5": "389e4f43858a586275c54232bf8536d37489468e",
+      "class": "GenPagesProductReviews"
+    },
+    "pages/user/change-password.kt": {
+      "md5": "051165cb818abbcad1320f36abe92540810555cd",
+      "class": "GenPagesUserChangePassword"
+    },
+    "pages/index/index.kt": {
+      "class": "GenPagesIndexIndex",
+      "md5": "c4861d32e71ada87f0ba7c8ffae3bf375393617d"
+    },
+    "pages/search/index.kt": {
+      "class": "GenPagesSearchIndex",
+      "md5": "ff0c88c98b99aafeaabdf3c835f9ef7b9c965fa9"
+    },
+    "pages/product/detail.kt": {
+      "md5": "31aee2ffe3b74cff0e697c0b40fb4ab5822ce3f4",
+      "class": "GenPagesProductDetail"
+    },
+    "pages/order/checkout.kt": {
+      "md5": "7e5eeb3ca4bad8bebd645c45c5ffb31a481c1dee",
+      "class": "GenPagesOrderCheckout"
+    },
+    "pages/seller/orders.kt": {
+      "md5": "896bf3002b3433b7380ccdc0b7ff7088149ba644",
+      "class": "GenPagesSellerOrders"
+    },
+    "pages/seller/admin-statistics.kt": {
+      "md5": "878c725350f67061b784e0bd58e11e62a8378228",
+      "class": "GenPagesSellerAdminStatistics"
+    },
+    "pages/user/reviews.kt": {
+      "md5": "dc9d953ea8a37ede2c1a2a1a93272e0512224038",
+      "class": "GenPagesUserReviews"
+    },
+    "pages/seller/statistics.kt": {
+      "md5": "6206dd3e54071838bf69aa41065685060daa56b8",
+      "class": "GenPagesSellerStatistics"
+    },
+    "pages/seller/admin-users.kt": {
+      "md5": "e66643c061c323f339e874e51f007509c82d5da4",
+      "class": "GenPagesSellerAdminUsers"
+    },
+    "pages/cart/index.kt": {
+      "class": "GenPagesCartIndex",
+      "md5": "6ae4ae5fb8d19d6b6dbde83e99644597ebdfb2ed"
+    },
+    "pages/user/wallet.kt": {
+      "md5": "1f4f37a826b959c44d1e0e8df11409704abe8f70",
+      "class": "GenPagesUserWallet"
+    },
+    "pages/seller/products.kt": {
+      "class": "GenPagesSellerProducts",
+      "md5": "173a6967a1767c606588486c66e80bdca85696d9"
+    },
+    "pages/seller/inventory.kt": {
+      "md5": "56ac33cae95b8b14b2311f0b8e07c0e71cf7d963",
+      "class": "GenPagesSellerInventory"
+    },
+    "pages/user/address-edit.kt": {
+      "class": "GenPagesUserAddressEdit",
+      "md5": "d5a6741fcf92b73b9584f23ac902022ccb4ea2f1"
+    },
+    "pages/login/login.kt": {
+      "md5": "e4a69596e2754ab813a56d3973910f1de849781f",
+      "class": "GenPagesLoginLogin"
+    },
+    "pages/user/profile.kt": {
+      "md5": "bcc43a7f27a9d3230207e61915d9cc75b1af54f0",
+      "class": "GenPagesUserProfile"
+    },
+    "pages/product/favorites.kt": {
+      "class": "GenPagesProductFavorites",
+      "md5": "1433cc8987ee5635c7c338298d22756e9a5ec41d"
+    },
+    "pages/user/edit-profile.kt": {
+      "md5": "b2a93bceb7daa71c95e31a5b7e6fc33bb7e13f92",
+      "class": "GenPagesUserEditProfile"
+    },
+    "pages/service/chat.kt": {
+      "class": "GenPagesServiceChat",
+      "md5": "757ce2b2408e186b9105a6953597447deb709ed7"
+    },
+    "pages/seller/admin-index.kt": {
+      "class": "GenPagesSellerAdminIndex",
+      "md5": "9ad2bc52ca8564f44dc1bb60a91671211a3b6c18"
+    },
+    "index.kt": {
+      "md5": "0ca8543219003f3e5e6da6345216c8b5aeefe4eb",
+      "class": ""
+    },
+    "pages/seller/product-audit.kt": {
+      "class": "GenPagesSellerProductAudit",
+      "md5": "9d06d0adb7bb20f84c359d73d9925b7b534554d0"
+    },
+    "pages/product/list.kt": {
+      "md5": "fd5b56fe424e450c96f87b2aba834fd651b4a91b",
+      "class": "GenPagesProductList"
+    },
+    "pages/seller/reviews.kt": {
+      "md5": "5a3c9987aa800f4143afb7f194d81018e8b9dd36",
+      "class": "GenPagesSellerReviews"
+    },
+    "pages/order/pay.kt": {
+      "md5": "d8918075b9fdb59b904913cf7f2d6a708e9488dc",
+      "class": "GenPagesOrderPay"
+    },
+    "pages/product/history.kt": {
+      "class": "GenPagesProductHistory",
+      "md5": "3334a595696c9dc4e0eafeee6db8b63168f3434a"
+    },
+    "pages/admin/reviews.kt": {
+      "class": "GenPagesAdminReviews",
+      "md5": "cf732f93f254e767c6e96fc0a882496f6721ae48"
+    },
+    "pages/user/settings.kt": {
+      "md5": "b5ac548e5c0b62c8a92cc19d62f9dc145214b7b3",
+      "class": "GenPagesUserSettings"
+    },
+    "pages/order/review.kt": {
+      "class": "GenPagesOrderReview",
+      "md5": "2f085c1740e4ccd92ba9e3c57a1ae2738f92f7fb"
+    },
+    "pages/order/list.kt": {
+      "class": "GenPagesOrderList",
+      "md5": "753b0b11d77878a4319c0139917c76b3790173ca"
+    },
+    "pages/seller/account.kt": {
+      "class": "GenPagesSellerAccount",
+      "md5": "ce55561652b378689404e294f86f70889ad6c3ea"
+    },
+    "pages/seller/product-edit.kt": {
+      "class": "GenPagesSellerProductEdit",
+      "md5": "a940d57df70bfc3b6592b5425e3c6dadff2d76c4"
+    },
+    "pages/user/address-list.kt": {
+      "md5": "2d0d07614570c1c1b789752d15e725e55a49f321",
+      "class": "GenPagesUserAddressList"
+    }
+  }
+}

@@ -1,0 +1,445 @@
+import BottomNav from '@/components/BottomNav.uvue';
+import { addToCart as addToCartApi, getCartCount, type CartAddParams } from '@/api/cart';
+import { getProductDetail } from '@/api/product';
+import { post } from '@/utils/request';
+type CategoryType = {
+    __$originalPosition?: UTSSourceMapPosition<"CategoryType", "pages/product/list.uvue", 108, 6>;
+    id: string;
+    name: string;
+};
+type ProductType = {
+    __$originalPosition?: UTSSourceMapPosition<"ProductType", "pages/product/list.uvue", 113, 6>;
+    id: number;
+    name: string;
+    description: string;
+    image: string;
+    price: number;
+    originalPrice?: number;
+    sales: number;
+    category: string;
+    tags?: string[];
+};
+const __sfc__ = defineComponent({
+    components: {
+        BottomNav
+    },
+    data() {
+        return {
+            searchKeyword: '',
+            activeCategory: 'all',
+            activeSort: 'default',
+            cartCount: 0,
+            isLoading: false,
+            hasMore: true,
+            pageNum: 1,
+            pageSize: 20,
+            listType: '',
+            categoryId: 0,
+            categories: [
+                { id: 'vegetable', name: '蔬菜' } as CategoryType,
+                { id: 'fruit', name: '水果' } as CategoryType,
+                { id: 'meat', name: '肉禽' } as CategoryType,
+                { id: 'seafood', name: '水产' } as CategoryType,
+                { id: 'dairy', name: '乳品' } as CategoryType,
+                { id: 'snack', name: '零食' } as CategoryType
+            ] as CategoryType[],
+            products: [] as ProductType[],
+            displayProducts: [] as ProductType[] // 展示数据 (本Demo简单起见，主要通过计算属性过滤，实际应后端分页)
+        };
+    },
+    onShow() {
+        uni.$emit('bottomNavRefresh');
+    },
+    computed: {
+        filteredProducts(): ProductType[] {
+            // 直接返回products，排序和筛选由后端处理
+            return this.products;
+        }
+    },
+    onLoad(options) {
+        // 使用 UTSJSONObject 兼容 UTS 语法
+        const opts = options as UTSJSONObject;
+        // 接收搜索关键词
+        const keyword = opts.get('keyword');
+        if (keyword != null) {
+            this.searchKeyword = keyword as string;
+        }
+        // 接收列表类型（special, discount, new, recommend）
+        const type = opts.get('type');
+        if (type != null) {
+            this.listType = type as string;
+        }
+        // 接收分类ID
+        const categoryId = opts.get('categoryId');
+        if (categoryId != null) {
+            this.categoryId = parseInt(categoryId as string);
+        }
+        // 兼容旧的category参数
+        const category = opts.get('category');
+        if (category != null) {
+            this.activeCategory = category as string;
+        }
+        this.loadData();
+        this.updateCartCount();
+    },
+    methods: {
+        // 检查商品是否有标签
+        hasTags(product: ProductType): boolean {
+            const tags = product.tags;
+            return tags != null && tags.length > 0;
+        },
+        loadData() {
+            this.isLoading = true;
+            // 构建搜索参数
+            const params = { __$originalPosition: new UTSSourceMapPosition("params", "pages/product/list.uvue", 203, 13),
+                pageNum: this.pageNum,
+                pageSize: this.pageSize,
+                status: 1
+            } as UTSJSONObject;
+            // 添加搜索关键词
+            if (this.searchKeyword != '') {
+                params.set('keyword', this.searchKeyword);
+            }
+            // 添加分类ID
+            if (this.categoryId > 0) {
+                params.set('categoryId', this.categoryId);
+            }
+            // 根据列表类型添加筛选条件
+            if (this.listType === 'special') {
+                // 县域特色 - 可以根据实际业务添加特定标签
+            }
+            else if (this.listType === 'discount') {
+                // 限时特惠 - 筛选有折扣的商品
+            }
+            else if (this.listType === 'new') {
+                params.set('isNew', 1);
+            }
+            else if (this.listType === 'recommend') {
+                params.set('isRecommended', 1);
+            }
+            // 添加排序参数
+            if (this.activeSort === 'sales') {
+                params.set('sortBy', 'sales');
+                params.set('sortOrder', 'desc');
+            }
+            else if (this.activeSort === 'price_asc') {
+                params.set('sortBy', 'price');
+                params.set('sortOrder', 'asc');
+            }
+            else if (this.activeSort === 'price_desc') {
+                params.set('sortBy', 'price');
+                params.set('sortOrder', 'desc');
+            }
+            // 调用后端搜索接口
+            post('/products/search', params).then((res) => {
+                const data = res.data as UTSJSONObject;
+                const records = data.getArray('records');
+                if (records != null && records.length > 0) {
+                    const products: ProductType[] = [];
+                    for (let i = 0; i < records.length; i++) {
+                        const item = records[i] as UTSJSONObject;
+                        const tags: string[] = [];
+                        const isNew = item.getBoolean('isNew') ?? false;
+                        const isHot = item.getBoolean('isHot') ?? false;
+                        const isRecommended = item.getBoolean('isRecommended') ?? false;
+                        if (isNew)
+                            tags.push('新品');
+                        if (isHot)
+                            tags.push('热销');
+                        if (isRecommended)
+                            tags.push('推荐');
+                        products.push({
+                            id: (item.getNumber('id') ?? 0).toInt(),
+                            name: item.getString('productName') ?? '',
+                            description: item.getString('description') ?? '',
+                            image: item.getString('mainImage') ?? '',
+                            price: item.getNumber('currentPrice') ?? 0,
+                            originalPrice: item.getNumber('originalPrice'),
+                            sales: (item.getNumber('salesVolume') ?? 0).toInt(),
+                            category: 'all',
+                            tags: tags
+                        } as ProductType);
+                    }
+                    this.products = products;
+                }
+                this.isLoading = false;
+            }).catch((err) => {
+                console.error('获取商品列表失败:', err, " at pages/product/list.uvue:275");
+                this.isLoading = false;
+            });
+        },
+        handleSearch() {
+            // 重新加载数据
+            this.pageNum = 1;
+            this.products = [];
+            this.loadData();
+        },
+        selectCategory(id: string) {
+            this.activeCategory = id;
+        },
+        selectSort(type: string) {
+            this.activeSort = type;
+            // 重新加载数据
+            this.pageNum = 1;
+            this.products = [];
+            this.loadData();
+        },
+        togglePriceSort() {
+            if (this.activeSort === 'price_asc') {
+                this.activeSort = 'price_desc';
+            }
+            else {
+                this.activeSort = 'price_asc';
+            }
+            // 重新加载数据
+            this.pageNum = 1;
+            this.products = [];
+            this.loadData();
+        },
+        loadMore() {
+            // 实际应加载更多页数据
+            if (!this.isLoading) {
+                console.log('Load More...', " at pages/product/list.uvue:309");
+            }
+        },
+        goToDetail(id: number) {
+            uni.navigateTo({ url: `/pages/product/detail?id=${id}` });
+        },
+        addToCart(product: ProductType) {
+            // 先获取商品详情以获取SKU ID
+            getProductDetail(product.id).then((res) => {
+                const data = res.data as UTSJSONObject;
+                let skuId = product.id; // 默认使用商品ID
+                // 尝试获取第一个SKU的ID
+                const skuArr = data.getArray('skuList');
+                if (skuArr != null && skuArr.length > 0) {
+                    const firstSku = skuArr[0] as UTSJSONObject;
+                    skuId = (firstSku.getNumber('id') ?? product.id).toInt();
+                }
+                const params: CartAddParams = {
+                    productId: product.id,
+                    skuId: skuId,
+                    quantity: 1
+                };
+                console.log('添加购物车参数:', JSON.stringify(params), " at pages/product/list.uvue:333");
+                // 嵌套调用添加购物车API
+                addToCartApi(params).then((_addRes) => {
+                    uni.showToast({ title: '已加入购物车', icon: 'success' });
+                    this.cartCount++;
+                    uni.$emit('bottomNavRefresh');
+                }).catch((addErr) => {
+                    console.error('添加购物车失败:', addErr, " at pages/product/list.uvue:341");
+                    uni.showToast({ title: '添加失败', icon: 'none' });
+                });
+            }).catch((err) => {
+                console.error('获取商品详情失败:', err, " at pages/product/list.uvue:345");
+                uni.showToast({ title: '添加失败', icon: 'none' });
+            });
+        },
+        goToCart() {
+            uni.navigateTo({ url: '/pages/cart/index' });
+        },
+        updateCartCount() {
+            // 从API获取购物车数量
+            getCartCount().then((res) => {
+                const count = (res.data as number | null) ?? 0;
+                this.cartCount = count as number;
+            }).catch((err) => {
+                console.error('获取购物车数量失败:', err, " at pages/product/list.uvue:358");
+                this.cartCount = 0;
+            });
+        }
+    }
+});
+export default __sfc__;
+function GenPagesProductListRender(this: InstanceType<typeof __sfc__>): any | null {
+    const _ctx = this;
+    const _cache = this.$.renderCache;
+    const _component_BottomNav = resolveComponent("BottomNav");
+    return createElementVNode("view", utsMapOf({ class: "page" }), [
+        createElementVNode("view", utsMapOf({ class: "header" }), [
+            createElementVNode("view", utsMapOf({
+                class: "search-bar",
+                onClick: _ctx.handleSearch
+            }), [
+                createElementVNode("text", utsMapOf({ class: "search-icon" }), "🔍"),
+                createElementVNode("input", utsMapOf({
+                    class: "search-input",
+                    modelValue: _ctx.searchKeyword,
+                    onInput: ($event: InputEvent) => { (_ctx.searchKeyword) = $event.detail.value; },
+                    placeholder: "搜索商品",
+                    onConfirm: _ctx.handleSearch
+                }), null, 40 /* PROPS, NEED_HYDRATION */, ["modelValue", "onInput", "onConfirm"])
+            ], 8 /* PROPS */, ["onClick"])
+        ]),
+        createElementVNode("view", utsMapOf({ class: "filter-bar" }), [
+            createElementVNode("scroll-view", utsMapOf({
+                class: "category-scroll",
+                "scroll-x": "true",
+                "show-scrollbar": "false"
+            }), [
+                createElementVNode("view", utsMapOf({ class: "category-tabs" }), [
+                    createElementVNode("view", utsMapOf({
+                        class: "tab-item",
+                        onClick: () => { _ctx.selectCategory('all'); }
+                    }), [
+                        createElementVNode("text", utsMapOf({
+                            class: normalizeClass(["tab-text", utsMapOf({ 'tab-text-active': _ctx.activeCategory === 'all' })])
+                        }), "全部", 2 /* CLASS */),
+                        _ctx.activeCategory === 'all'
+                            ? createElementVNode("view", utsMapOf({
+                                key: 0,
+                                class: "active-line"
+                            }))
+                            : createCommentVNode("v-if", true)
+                    ], 8 /* PROPS */, ["onClick"]),
+                    createElementVNode(Fragment, null, RenderHelpers.renderList(_ctx.categories, (cat, __key, __index, _cached): any => {
+                        return createElementVNode("view", utsMapOf({
+                            class: "tab-item",
+                            key: cat.id,
+                            onClick: () => { _ctx.selectCategory(cat.id); }
+                        }), [
+                            createElementVNode("text", utsMapOf({
+                                class: normalizeClass(["tab-text", utsMapOf({ 'tab-text-active': _ctx.activeCategory === cat.id })])
+                            }), toDisplayString(cat.name), 3 /* TEXT, CLASS */),
+                            _ctx.activeCategory === cat.id
+                                ? createElementVNode("view", utsMapOf({
+                                    key: 0,
+                                    class: "active-line"
+                                }))
+                                : createCommentVNode("v-if", true)
+                        ], 8 /* PROPS */, ["onClick"]);
+                    }), 128 /* KEYED_FRAGMENT */)
+                ])
+            ]),
+            createElementVNode("view", utsMapOf({ class: "sort-tabs" }), [
+                createElementVNode("view", utsMapOf({
+                    class: normalizeClass(["sort-item", utsMapOf({ 'sort-item-active': _ctx.activeSort === 'default' })]),
+                    onClick: () => { _ctx.selectSort('default'); }
+                }), [
+                    createElementVNode("text", null, "综合")
+                ], 10 /* CLASS, PROPS */, ["onClick"]),
+                createElementVNode("view", utsMapOf({
+                    class: normalizeClass(["sort-item", utsMapOf({ 'sort-item-active': _ctx.activeSort === 'sales' })]),
+                    onClick: () => { _ctx.selectSort('sales'); }
+                }), [
+                    createElementVNode("text", null, "销量")
+                ], 10 /* CLASS, PROPS */, ["onClick"]),
+                createElementVNode("view", utsMapOf({
+                    class: normalizeClass(["sort-item", utsMapOf({ 'sort-item-active': _ctx.activeSort.includes('price') })]),
+                    onClick: _ctx.togglePriceSort
+                }), [
+                    createElementVNode("text", null, "价格"),
+                    createElementVNode("view", utsMapOf({ class: "sort-arrows" }), [
+                        createElementVNode("text", utsMapOf({
+                            class: normalizeClass(["arrow arrow-up", utsMapOf({ 'arrow-on': _ctx.activeSort === 'price_asc' })])
+                        }), "▲", 2 /* CLASS */),
+                        createElementVNode("text", utsMapOf({
+                            class: normalizeClass(["arrow", utsMapOf({ 'arrow-on': _ctx.activeSort === 'price_desc' })])
+                        }), "▼", 2 /* CLASS */)
+                    ])
+                ], 10 /* CLASS, PROPS */, ["onClick"])
+            ])
+        ]),
+        createElementVNode("scroll-view", utsMapOf({
+            class: "product-scroll",
+            "scroll-y": "true",
+            onScrolltolower: _ctx.loadMore
+        }), [
+            createElementVNode("view", utsMapOf({ class: "product-list" }), [
+                createElementVNode(Fragment, null, RenderHelpers.renderList(_ctx.filteredProducts, (product, __key, __index, _cached): any => {
+                    return createElementVNode("view", utsMapOf({
+                        class: "product-item",
+                        key: product.id,
+                        onClick: () => { _ctx.goToDetail(product.id); }
+                    }), [
+                        createElementVNode("image", utsMapOf({
+                            class: "product-img",
+                            src: product.image,
+                            mode: "aspectFill"
+                        }), null, 8 /* PROPS */, ["src"]),
+                        createElementVNode("view", utsMapOf({ class: "product-content" }), [
+                            createElementVNode("view", utsMapOf({ class: "info-top" }), [
+                                createElementVNode("text", utsMapOf({ class: "product-name" }), toDisplayString(product.name), 1 /* TEXT */),
+                                createElementVNode("text", utsMapOf({ class: "product-desc" }), toDisplayString(product.description), 1 /* TEXT */),
+                                isTrue(_ctx.hasTags(product))
+                                    ? createElementVNode("view", utsMapOf({
+                                        key: 0,
+                                        class: "product-tags"
+                                    }), [
+                                        createElementVNode(Fragment, null, RenderHelpers.renderList(product.tags, (tag, __key, __index, _cached): any => {
+                                            return createElementVNode("text", utsMapOf({
+                                                class: "tag",
+                                                key: tag
+                                            }), toDisplayString(tag), 1 /* TEXT */);
+                                        }), 128 /* KEYED_FRAGMENT */)
+                                    ])
+                                    : createCommentVNode("v-if", true)
+                            ]),
+                            createElementVNode("view", utsMapOf({ class: "info-bottom" }), [
+                                createElementVNode("view", utsMapOf({ class: "price-box" }), [
+                                    createElementVNode("text", utsMapOf({ class: "currency" }), "¥"),
+                                    createElementVNode("text", utsMapOf({ class: "price" }), toDisplayString(product.price), 1 /* TEXT */),
+                                    isTrue(product.originalPrice)
+                                        ? createElementVNode("text", utsMapOf({
+                                            key: 0,
+                                            class: "origin-price"
+                                        }), "¥" + toDisplayString(product.originalPrice), 1 /* TEXT */)
+                                        : createCommentVNode("v-if", true)
+                                ]),
+                                createElementVNode("view", utsMapOf({
+                                    class: "add-btn",
+                                    onClick: withModifiers(() => { _ctx.addToCart(product); }, ["stop"])
+                                }), [
+                                    createElementVNode("text", utsMapOf({ class: "add-icon" }), "+")
+                                ], 8 /* PROPS */, ["onClick"])
+                            ])
+                        ])
+                    ], 8 /* PROPS */, ["onClick"]);
+                }), 128 /* KEYED_FRAGMENT */)
+            ]),
+            isTrue(_ctx.filteredProducts.length === 0 && !_ctx.isLoading)
+                ? createElementVNode("view", utsMapOf({
+                    key: 0,
+                    class: "empty-state"
+                }), [
+                    createElementVNode("text", utsMapOf({ class: "empty-icon" }), "📦"),
+                    createElementVNode("text", utsMapOf({ class: "empty-text" }), "暂无相关商品")
+                ])
+                : createCommentVNode("v-if", true),
+            isTrue(_ctx.isLoading)
+                ? createElementVNode("view", utsMapOf({
+                    key: 1,
+                    class: "loading-more"
+                }), [
+                    createElementVNode("text", utsMapOf({ class: "loading-text" }), "加载中...")
+                ])
+                : createCommentVNode("v-if", true),
+            isTrue(!_ctx.isLoading && !_ctx.hasMore && _ctx.filteredProducts.length > 0)
+                ? createElementVNode("view", utsMapOf({
+                    key: 2,
+                    class: "no-more"
+                }), [
+                    createElementVNode("text", utsMapOf({ class: "no-more-text" }), "没有更多了")
+                ])
+                : createCommentVNode("v-if", true)
+        ], 40 /* PROPS, NEED_HYDRATION */, ["onScrolltolower"]),
+        createElementVNode("view", utsMapOf({
+            class: "cart-float-btn",
+            onClick: _ctx.goToCart
+        }), [
+            createElementVNode("view", utsMapOf({ class: "cart-icon-wrapper" }), [
+                createElementVNode("text", utsMapOf({ class: "cart-icon" }), "🛒"),
+                _ctx.cartCount > 0
+                    ? createElementVNode("view", utsMapOf({
+                        key: 0,
+                        class: "cart-badge"
+                    }), toDisplayString(_ctx.cartCount), 1 /* TEXT */)
+                    : createCommentVNode("v-if", true)
+            ])
+        ], 8 /* PROPS */, ["onClick"]),
+        createVNode(_component_BottomNav)
+    ]);
+}
+const GenPagesProductListStyles = [utsMapOf([["page", padStyleMapOf(utsMapOf([["backgroundColor", "#f7f8fa"], ["flex", 1], ["display", "flex"], ["flexDirection", "column"]]))], ["header", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["paddingTop", CSS_VAR_STATUS_BAR_HEIGHT], ["paddingRight", 16], ["paddingBottom", 8], ["paddingLeft", 16]]))], ["search-bar", padStyleMapOf(utsMapOf([["backgroundColor", "#f2f2f2"], ["borderTopLeftRadius", 20], ["borderTopRightRadius", 20], ["borderBottomRightRadius", 20], ["borderBottomLeftRadius", 20], ["height", 36], ["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["paddingTop", 0], ["paddingRight", 12], ["paddingBottom", 0], ["paddingLeft", 12]]))], ["search-icon", utsMapOf([[".search-bar ", utsMapOf([["fontSize", 16], ["color", "#999999"], ["marginRight", 8]])]])], ["search-input", utsMapOf([[".search-bar ", utsMapOf([["flex", 1], ["fontSize", 14], ["color", "#333333"]])]])], ["filter-bar", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["borderBottomWidth", 1], ["borderBottomStyle", "solid"], ["borderBottomColor", "#eeeeee"], ["zIndex", 10]]))], ["category-scroll", padStyleMapOf(utsMapOf([["whiteSpace", "nowrap"], ["borderBottomWidth", 1], ["borderBottomStyle", "solid"], ["borderBottomColor", "#f9f9f9"]]))], ["category-tabs", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["paddingTop", 0], ["paddingRight", 8], ["paddingBottom", 0], ["paddingLeft", 8]]))], ["tab-item", padStyleMapOf(utsMapOf([["position", "relative"], ["paddingTop", 12], ["paddingRight", 16], ["paddingBottom", 12], ["paddingLeft", 16], ["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"]]))], ["tab-text", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#666666"]]))], ["tab-text-active", padStyleMapOf(utsMapOf([["color", "#0066CC"], ["fontWeight", "700"], ["fontSize", 15]]))], ["active-line", padStyleMapOf(utsMapOf([["position", "absolute"], ["bottom", 6], ["width", 20], ["height", 3], ["backgroundColor", "#0066CC"], ["borderTopLeftRadius", 2], ["borderTopRightRadius", 2], ["borderBottomRightRadius", 2], ["borderBottomLeftRadius", 2]]))], ["sort-tabs", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["height", 40], ["alignItems", "center"]]))], ["sort-item", padStyleMapOf(utsMapOf([["flex", 1], ["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["justifyContent", "center"], ["fontSize", 13], ["color", "#666666"]]))], ["sort-item-active", padStyleMapOf(utsMapOf([["color", "#0066CC"], ["fontWeight", "400"]]))], ["sort-arrows", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "column"], ["marginLeft", 4]]))], ["arrow", padStyleMapOf(utsMapOf([["fontSize", 8], ["lineHeight", "8px"], ["color", "#cccccc"]]))], ["arrow-on", padStyleMapOf(utsMapOf([["color", "#0066CC"]]))], ["arrow-up", padStyleMapOf(utsMapOf([["marginBottom", -1]]))], ["product-scroll", padStyleMapOf(utsMapOf([["flex", 1], ["backgroundColor", "#f7f8fa"]]))], ["product-list", padStyleMapOf(utsMapOf([["paddingTop", 10], ["paddingRight", 12], ["paddingBottom", 10], ["paddingLeft", 12]]))], ["product-item", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["backgroundColor", "#ffffff"], ["borderTopLeftRadius", 12], ["borderTopRightRadius", 12], ["borderBottomRightRadius", 12], ["borderBottomLeftRadius", 12], ["paddingTop", 10], ["paddingRight", 10], ["paddingBottom", 10], ["paddingLeft", 10], ["marginBottom", 10], ["boxShadow", "0 1px 4px rgba(0, 0, 0, 0.02)"]]))], ["product-img", utsMapOf([[".product-item ", utsMapOf([["width", 100], ["height", 100], ["borderTopLeftRadius", 8], ["borderTopRightRadius", 8], ["borderBottomRightRadius", 8], ["borderBottomLeftRadius", 8], ["flexShrink", 0], ["backgroundColor", "#f9f9f9"]])]])], ["product-content", utsMapOf([[".product-item ", utsMapOf([["flex", 1], ["marginLeft", 12], ["display", "flex"], ["flexDirection", "column"], ["justifyContent", "space-between"]])]])], ["product-name", utsMapOf([[".product-item .product-content .info-top ", utsMapOf([["fontSize", 15], ["fontWeight", "700"], ["color", "#333333"], ["marginBottom", 4], ["overflow", "hidden"], ["whiteSpace", "normal"], ["lineHeight", 1.4], ["maxHeight", 40]])]])], ["product-desc", utsMapOf([[".product-item .product-content .info-top ", utsMapOf([["fontSize", 12], ["color", "#999999"], ["marginBottom", 6], ["whiteSpace", "nowrap"], ["overflow", "hidden"], ["textOverflow", "ellipsis"]])]])], ["product-tags", utsMapOf([[".product-item .product-content .info-top ", utsMapOf([["display", "flex"], ["flexDirection", "row"], ["flexWrap", "wrap"]])]])], ["tag", utsMapOf([[".product-item .product-content .info-top .product-tags ", utsMapOf([["fontSize", 10], ["color", "#ff4d4f"], ["borderTopWidth", 1], ["borderRightWidth", 1], ["borderBottomWidth", 1], ["borderLeftWidth", 1], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "rgba(255,77,79,0.3)"], ["borderRightColor", "rgba(255,77,79,0.3)"], ["borderBottomColor", "rgba(255,77,79,0.3)"], ["borderLeftColor", "rgba(255,77,79,0.3)"], ["paddingTop", 1], ["paddingRight", 4], ["paddingBottom", 1], ["paddingLeft", 4], ["borderTopLeftRadius", 4], ["borderTopRightRadius", 4], ["borderBottomRightRadius", 4], ["borderBottomLeftRadius", 4], ["backgroundColor", "rgba(255,77,79,0.05)"]])]])], ["info-bottom", utsMapOf([[".product-item .product-content ", utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "flex-end"], ["justifyContent", "space-between"]])]])], ["price-box", utsMapOf([[".product-item .product-content .info-bottom ", utsMapOf([["color", "#ff4d4f"]])]])], ["currency", utsMapOf([[".product-item .product-content .info-bottom .price-box ", utsMapOf([["fontSize", 12], ["fontWeight", "bold"]])]])], ["price", utsMapOf([[".product-item .product-content .info-bottom .price-box ", utsMapOf([["fontSize", 18], ["fontWeight", "bold"]])]])], ["origin-price", utsMapOf([[".product-item .product-content .info-bottom .price-box ", utsMapOf([["fontSize", 11], ["color", "#cccccc"], ["marginLeft", 4], ["opacity", 0.8]])]])], ["add-btn", utsMapOf([[".product-item .product-content .info-bottom ", utsMapOf([["width", 28], ["height", 28], ["backgroundColor", "#0066CC"], ["borderTopLeftRadius", 999], ["borderTopRightRadius", 999], ["borderBottomRightRadius", 999], ["borderBottomLeftRadius", 999], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"]])]])], ["add-icon", utsMapOf([[".product-item .product-content .info-bottom .add-btn ", utsMapOf([["color", "#ffffff"], ["fontSize", 20], ["fontWeight", "400"], ["marginTop", -2]])]])], ["empty-state", padStyleMapOf(utsMapOf([["paddingTop", 20], ["paddingRight", 20], ["paddingBottom", 20], ["paddingLeft", 20], ["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["loading-more", padStyleMapOf(utsMapOf([["paddingTop", 20], ["paddingRight", 20], ["paddingBottom", 20], ["paddingLeft", 20], ["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["no-more", padStyleMapOf(utsMapOf([["paddingTop", 20], ["paddingRight", 20], ["paddingBottom", 20], ["paddingLeft", 20], ["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["empty-icon", utsMapOf([[".empty-state ", utsMapOf([["fontSize", 40], ["marginBottom", 10]])], [".loading-more ", utsMapOf([["fontSize", 40], ["marginBottom", 10]])], [".no-more ", utsMapOf([["fontSize", 40], ["marginBottom", 10]])]])], ["empty-text", padStyleMapOf(utsMapOf([["fontSize", 13], ["color", "#999999"]]))], ["loading-text", padStyleMapOf(utsMapOf([["fontSize", 13], ["color", "#999999"]]))], ["no-more-text", padStyleMapOf(utsMapOf([["fontSize", 13], ["color", "#999999"]]))], ["cart-float-btn", padStyleMapOf(utsMapOf([["position", "fixed"], ["right", 20], ["bottom", 100], ["width", 50], ["height", 50], ["backgroundColor", "#ffffff"], ["borderTopLeftRadius", 999], ["borderTopRightRadius", 999], ["borderBottomRightRadius", 999], ["borderBottomLeftRadius", 999], ["boxShadow", "0 4px 12px rgba(0, 0, 0, 0.15)"], ["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["justifyContent", "center"], ["zIndex", 100]]))], ["cart-icon", utsMapOf([[".cart-float-btn ", utsMapOf([["fontSize", 24]])]])], ["cart-badge", utsMapOf([[".cart-float-btn ", utsMapOf([["position", "absolute"], ["top", -2], ["right", -2], ["backgroundColor", "#ff4d4f"], ["color", "#ffffff"], ["fontSize", 10], ["paddingTop", 2], ["paddingRight", 5], ["paddingBottom", 2], ["paddingLeft", 5], ["borderTopLeftRadius", 10], ["borderTopRightRadius", 10], ["borderBottomRightRadius", 10], ["borderBottomLeftRadius", 10], ["minWidth", 16], ["textAlign", "center"]])]])]])];
+//# sourceMappingURL=list.uvue.map

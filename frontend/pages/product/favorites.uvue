@@ -1,0 +1,331 @@
+<template>
+  <view class="favorites-page">
+    <scroll-view class="favorites-scroll" scroll-y="true" :show-scrollbar="false">
+      <view class="favorites-list">
+        <view class="favorite-card" v-for="item in favorites" :key="item.collectionId" @click="goToDetail(item.productId)">
+          <image class="goods-img" :src="item.mainImage" mode="aspectFill"></image>
+          <view class="goods-info">
+            <text class="goods-name">{{ item.productName }}</text>
+            <text class="goods-desc">{{ item.inStock ? '有货' : '暂时缺货' }} · 已售{{ item.salesVolume }}件</text>
+            <view class="goods-bottom">
+              <view class="price-box">
+                <text class="currency">¥</text>
+                <text class="price">{{ item.currentPrice.toFixed(2) }}</text>
+                <text v-if="item.originalPrice > item.currentPrice" class="original-price">¥{{ item.originalPrice.toFixed(2) }}</text>
+              </view>
+              <view class="action-btn" @click.stop="removeFavorite(item.productId)">
+                <text class="btn-text">取消收藏</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 空状态 -->
+      <view v-if="favorites.length === 0" class="empty-state">
+        <text class="empty-icon">❤️</text>
+        <text class="empty-text">暂无收藏商品</text>
+        <button class="go-shopping-btn" @click="goShopping">去逛逛</button>
+      </view>
+    </scroll-view>
+  </view>
+</template>
+
+<script lang="uts">
+import { getCollectionList, uncollectProduct, clearCollections } from '@/api/product'
+
+type CollectionItem = {
+  collectionId : number
+  productId : number
+  productName : string
+  mainImage : string
+  currentPrice : number
+  originalPrice : number
+  stock : number
+  salesVolume : number
+  status : number
+  collectTime : string
+  inStock : boolean
+}
+
+export default {
+  data() {
+    return {
+      favorites: [] as CollectionItem[],
+      loading: false,
+      pageNum: 1,
+      pageSize: 20,
+      hasMore: true
+    }
+  },
+  onLoad() {
+    this.loadFavorites()
+  },
+  onShow() {
+    // 每次显示页面时刷新数据
+    this.pageNum = 1
+    this.hasMore = true
+    this.loadFavorites()
+  },
+  onNavigationBarButtonTap(e : OnNavigationBarButtonTapOptions) {
+    // 监听导航栏按钮点击
+    if (e.index === 0) {
+      // 点击清空按钮
+      this.clearAll()
+    }
+  },
+  methods: {
+    loadFavorites() {
+      if (this.loading) return
+      
+      this.loading = true
+      uni.showLoading({ title: '加载中...' })
+      
+      getCollectionList(this.pageNum, this.pageSize, 'time', 'desc').then((result) => {
+        uni.hideLoading()
+        this.loading = false
+        
+        if (result.code === 200) {
+          const data = result.data as UTSJSONObject
+          if (data != null) {
+            const records = data.getArray('records')
+            if (records != null && records.length > 0) {
+              const items : CollectionItem[] = []
+              for (let i = 0; i < records.length; i++) {
+                const item = records[i] as UTSJSONObject
+                if (item != null) {
+                  items.push({
+                    collectionId: (item.getNumber('collectionId') ?? 0).toInt(),
+                    productId: (item.getNumber('productId') ?? 0).toInt(),
+                    productName: item.getString('productName') ?? '',
+                    mainImage: item.getString('mainImage') ?? '',
+                    currentPrice: (item.getNumber('currentPrice') ?? 0),
+                    originalPrice: (item.getNumber('originalPrice') ?? 0),
+                    stock: (item.getNumber('stock') ?? 0).toInt(),
+                    salesVolume: (item.getNumber('salesVolume') ?? 0).toInt(),
+                    status: (item.getNumber('status') ?? 1).toInt(),
+                    collectTime: item.getString('collectTime') ?? '',
+                    inStock: item.getBoolean('inStock') ?? true
+                  } as CollectionItem)
+                }
+              }
+              
+              if (this.pageNum === 1) {
+                this.favorites = items
+              } else {
+                this.favorites = this.favorites.concat(items)
+              }
+              
+              const total = (data.getNumber('total') ?? 0).toInt()
+              this.hasMore = this.favorites.length < total
+            } else {
+              if (this.pageNum === 1) {
+                this.favorites = []
+              }
+              this.hasMore = false
+            }
+          }
+        }
+      }).catch((error) => {
+        uni.hideLoading()
+        this.loading = false
+        console.error('获取收藏列表失败:', error)
+        uni.showToast({ title: '加载失败', icon: 'none' })
+      })
+    },
+    goToDetail(productId : number) {
+      uni.navigateTo({ url: `/pages/product/detail?id=${productId}` })
+    },
+    removeFavorite(productId : number) {
+      uni.showModal({
+        title: '提示',
+        content: '确定取消收藏吗？',
+        success: (res) => {
+          if (res.confirm) {
+            uncollectProduct(productId).then((result) => {
+              if (result.code === 200) {
+                // 从列表中移除
+                this.favorites = this.favorites.filter((item : CollectionItem) : boolean => item.productId !== productId)
+                uni.showToast({ title: '已取消收藏', icon: 'none' })
+                // 触发刷新事件，更新个人中心的收藏数
+                uni.$emit('refreshFavorites')
+              } else {
+                uni.showToast({ title: result.message ?? '操作失败', icon: 'none' })
+              }
+            }).catch((error) => {
+              console.error('取消收藏失败:', error)
+              uni.showToast({ title: '操作失败', icon: 'none' })
+            })
+          }
+        }
+      })
+    },
+    goShopping() {
+      uni.switchTab({ url: '/pages/index/index' })
+    },
+    clearAll() {
+      uni.showModal({
+        title: '提示',
+        content: '确定清空所有收藏吗？此操作不可撤销。',
+        success: (res) => {
+          if (res.confirm) {
+            clearCollections().then((result) => {
+              if (result.code === 200) {
+                this.favorites = []
+                uni.showToast({ title: '已清空收藏夹', icon: 'success' })
+                // 触发刷新事件，更新个人中心的收藏数
+                uni.$emit('refreshFavorites')
+              } else {
+                uni.showToast({ title: result.message ?? '操作失败', icon: 'none' })
+              }
+            }).catch((error) => {
+              console.error('清空收藏夹失败:', error)
+              uni.showToast({ title: '操作失败', icon: 'none' })
+            })
+          }
+        }
+      })
+    }
+  }
+}
+</script>
+
+<style lang="scss" scoped>
+.favorites-page {
+  background-color: $uni-bg-color-grey;
+  display: flex;
+  flex-direction: column;
+}
+
+.favorites-scroll {
+  flex: 1;
+  width: 100%;
+}
+
+.favorites-list {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.favorite-card {
+  background-color: #fff;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: row;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+}
+
+.goods-img {
+  width: 200rpx;
+  height: 200rpx;
+  border-radius: 8px;
+  background-color: $uni-bg-color-grey;
+  margin-right: 20rpx;
+}
+
+.goods-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+.goods-name {
+  font-size: 15px;
+  /* 600 改为 700 */
+  font-weight: 700;
+  color: $uni-text-color;
+  margin-bottom: 6px;
+  line-height: 1.4;
+  height: 42px;
+  overflow: hidden;
+  /* text-overflow: ellipsis; // uts support check */
+}
+
+.goods-desc {
+  font-size: 12px;
+  color: $uni-text-color-grey;
+  margin-bottom: auto;
+  line-height: 1.4;
+  height: 34px;
+  overflow: hidden;
+}
+
+.goods-bottom {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.price-box {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  color: $uni-color-error;
+}
+
+.currency {
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.price {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.original-price {
+  font-size: 12px;
+  color: $uni-text-color-grey;
+  margin-left: 8px;
+}
+
+.action-btn {
+  padding: 4px 12px;
+  border: 1px solid $uni-border-color;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-text {
+  font-size: 12px;
+  color: $uni-text-color-grey;
+}
+
+.empty-state {
+  padding: 80px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  color: $uni-text-color-disable;
+}
+
+.empty-text {
+  font-size: 14px;
+  color: $uni-text-color-grey;
+  margin-bottom: 24px;
+}
+
+.go-shopping-btn {
+  background-color: $uni-color-primary;
+  color: #fff;
+  font-size: 14px;
+  padding: 0 32px;
+  height: 40px;
+  line-height: 40px;
+  border-radius: 20px;
+}
+</style>

@@ -1,0 +1,113 @@
+import 'D:/HBuilderX/plugins/uniapp-cli-vite/node_modules/@dcloudio/uni-console/src/runtime/app/index.ts';/// <reference path="./types/global.d.ts" />
+/// <reference path="./types/plus.d.ts" />
+
+import App from './App.uvue'
+import { createSSRApp } from 'vue'
+export function createApp() {
+	const app = createSSRApp(App)
+	return {
+		app
+	}
+}
+export function main(app: IApp) {
+    definePageRoutes();
+    defineAppConfig();
+    (createApp()['app'] as VueApp).mount(app, GenUniApp());
+}
+
+export class UniAppConfig extends io.dcloud.uniapp.appframe.AppConfig {
+    override name: string = "by"
+    override appid: string = "__UNI__BY001"
+    override versionName: string = "1.0.0"
+    override versionCode: string = "100"
+    override uniCompilerVersion: string = "4.66"
+    
+    constructor() { super() }
+}
+
+import GenPagesIndexIndexClass from './pages/index/index.uvue?type=page'
+import GenPagesSearchIndexClass from './pages/search/index.uvue?type=page'
+import GenPagesLoginLoginClass from './pages/login/login.uvue?type=page'
+import GenPagesRegisterRegisterClass from './pages/register/register.uvue?type=page'
+import GenPagesProductListClass from './pages/product/list.uvue?type=page'
+import GenPagesProductDetailClass from './pages/product/detail.uvue?type=page'
+import GenPagesProductReviewsClass from './pages/product/reviews.uvue?type=page'
+import GenPagesCartIndexClass from './pages/cart/index.uvue?type=page'
+import GenPagesOrderListClass from './pages/order/list.uvue?type=page'
+import GenPagesOrderDetailClass from './pages/order/detail.uvue?type=page'
+import GenPagesOrderCheckoutClass from './pages/order/checkout.uvue?type=page'
+import GenPagesOrderReviewClass from './pages/order/review.uvue?type=page'
+import GenPagesOrderPayClass from './pages/order/pay.uvue?type=page'
+import GenPagesProductFavoritesClass from './pages/product/favorites.uvue?type=page'
+import GenPagesProductHistoryClass from './pages/product/history.uvue?type=page'
+import GenPagesUserProfileClass from './pages/user/profile.uvue?type=page'
+import GenPagesUserEditProfileClass from './pages/user/edit-profile.uvue?type=page'
+import GenPagesUserChangePasswordClass from './pages/user/change-password.uvue?type=page'
+import GenPagesUserAddressEditClass from './pages/user/address-edit.uvue?type=page'
+import GenPagesUserSettingsClass from './pages/user/settings.uvue?type=page'
+import GenPagesUserAddressListClass from './pages/user/address-list.uvue?type=page'
+import GenPagesUserReviewsClass from './pages/user/reviews.uvue?type=page'
+import GenPagesUserWalletClass from './pages/user/wallet.uvue?type=page'
+import GenPagesServiceChatClass from './pages/service/chat.uvue?type=page'
+import GenPagesSellerProductsClass from './pages/seller/products.uvue?type=page'
+import GenPagesSellerProductEditClass from './pages/seller/product-edit.uvue?type=page'
+import GenPagesSellerInventoryClass from './pages/seller/inventory.uvue?type=page'
+import GenPagesSellerOrdersClass from './pages/seller/orders.uvue?type=page'
+import GenPagesSellerStatisticsClass from './pages/seller/statistics.uvue?type=page'
+import GenPagesSellerAccountClass from './pages/seller/account.uvue?type=page'
+import GenPagesSellerReviewsClass from './pages/seller/reviews.uvue?type=page'
+import GenPagesAdminReviewsClass from './pages/admin/reviews.uvue?type=page'
+import GenPagesSellerAdminIndexClass from './pages/seller/admin-index.uvue?type=page'
+import GenPagesSellerProductAuditClass from './pages/seller/product-audit.uvue?type=page'
+import GenPagesSellerAdminUsersClass from './pages/seller/admin-users.uvue?type=page'
+import GenPagesSellerAdminStatisticsClass from './pages/seller/admin-statistics.uvue?type=page'
+function definePageRoutes() {
+__uniRoutes.push({ path: "pages/index/index", component: GenPagesIndexIndexClass, meta: { isQuit: true } as UniPageMeta, style: utsMapOf([["navigationBarTitleText",""],["navigationStyle","custom"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/search/index", component: GenPagesSearchIndexClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","搜索"],["navigationStyle","custom"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/login/login", component: GenPagesLoginLoginClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText",""],["navigationStyle","custom"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/register/register", component: GenPagesRegisterRegisterClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText",""],["navigationStyle","custom"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/product/list", component: GenPagesProductListClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","商品分类"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/product/detail", component: GenPagesProductDetailClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","商品详情"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/product/reviews", component: GenPagesProductReviewsClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","商品评价"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/cart/index", component: GenPagesCartIndexClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","购物车"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/order/list", component: GenPagesOrderListClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","我的订单"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/order/detail", component: GenPagesOrderDetailClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","订单详情"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/order/checkout", component: GenPagesOrderCheckoutClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","确认订单"],["navigationStyle","custom"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/order/review", component: GenPagesOrderReviewClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","发表评价"],["navigationStyle","custom"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/order/pay", component: GenPagesOrderPayClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","订单支付"],["navigationStyle","custom"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/product/favorites", component: GenPagesProductFavoritesClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","我的收藏"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/product/history", component: GenPagesProductHistoryClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","浏览历史"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/user/profile", component: GenPagesUserProfileClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText",""],["navigationStyle","custom"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/user/edit-profile", component: GenPagesUserEditProfileClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","编辑资料"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/user/change-password", component: GenPagesUserChangePasswordClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","修改密码"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/user/address-edit", component: GenPagesUserAddressEditClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","编辑地址"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/user/settings", component: GenPagesUserSettingsClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","设置"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/user/address-list", component: GenPagesUserAddressListClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","地址管理"],["navigationStyle","custom"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/user/reviews", component: GenPagesUserReviewsClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","我的评价"],["navigationStyle","custom"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/user/wallet", component: GenPagesUserWalletClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","我的钱包"],["navigationStyle","custom"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/service/chat", component: GenPagesServiceChatClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","在线客服"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/seller/products", component: GenPagesSellerProductsClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","商品管理"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/seller/product-edit", component: GenPagesSellerProductEditClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","编辑商品"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/seller/inventory", component: GenPagesSellerInventoryClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","库存管理"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/seller/orders", component: GenPagesSellerOrdersClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","订单管理"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/seller/statistics", component: GenPagesSellerStatisticsClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","销售统计"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/seller/account", component: GenPagesSellerAccountClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","商家账户"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/seller/reviews", component: GenPagesSellerReviewsClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","评价管理"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/admin/reviews", component: GenPagesAdminReviewsClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","评价管理"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/seller/admin-index", component: GenPagesSellerAdminIndexClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","管理工作台"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/seller/product-audit", component: GenPagesSellerProductAuditClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","商品审核"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/seller/admin-users", component: GenPagesSellerAdminUsersClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","用户管理"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+__uniRoutes.push({ path: "pages/seller/admin-statistics", component: GenPagesSellerAdminStatisticsClass, meta: { isQuit: false } as UniPageMeta, style: utsMapOf([["navigationBarTitleText","数据统计"],["navigationBarBackgroundColor","#0066CC"],["navigationBarTextStyle","white"]]) } as UniPageRoute)
+}
+const __uniTabBar: Map<string, any | null> | null = null
+const __uniLaunchPage: Map<string, any | null> = utsMapOf([["url","pages/index/index"],["style",utsMapOf([["navigationBarTitleText",""],["navigationStyle","custom"]])]])
+function defineAppConfig(){
+  __uniConfig.entryPagePath = '/pages/index/index'
+  __uniConfig.globalStyle = utsMapOf([["navigationBarTextStyle","white"],["navigationBarTitleText","鲜农优选"],["navigationBarBackgroundColor","#0066CC"],["backgroundColor","#f5f5f5"]])
+  __uniConfig.getTabBarConfig = ():Map<string, any> | null =>  null
+  __uniConfig.tabBar = __uniConfig.getTabBarConfig()
+  __uniConfig.conditionUrl = ''
+  __uniConfig.uniIdRouter = utsMapOf()
+  
+  __uniConfig.ready = true
+}

@@ -1,0 +1,351 @@
+
+import { getAdminReviews, getAdminReviewStatistics, deleteReview, updateReviewStatus } from '@/api/admin'
+import type { ReviewVO } from '@/api/review'
+
+const __sfc__ = defineComponent({
+	data() {
+		return {
+			reviews: [] as ReviewVO[],
+			pageNum: 1,
+			pageSize: 10,
+			searchKeyword: '',
+			selectedStatusIndex: 0,
+			selectedRatingIndex: 0,
+			statusOptions: ['全部', '显示', '隐藏'],
+			ratingOptions: ['全部', '1星', '2星', '3星', '4星', '5星'],
+			statsTotal: 0,
+			statsVisible: 0,
+			statsHidden: 0,
+			isLoading: false,
+			hasMore: true
+		}
+	},
+	onLoad() {
+		this.loadStatistics()
+		this.loadReviews()
+	},
+	methods: {
+		goBack() {
+			uni.navigateBack()
+		},
+		goToProduct(productId : number) {
+			uni.navigateTo({
+				url: `/pages/product/detail?id=${productId}`
+			})
+		},
+		resetAndLoad() {
+			this.pageNum = 1
+			this.reviews = []
+			this.hasMore = true
+			this.loadReviews()
+		},
+		handleSearch() {
+			this.resetAndLoad()
+		},
+		selectStatus(index : number) {
+			if (this.selectedStatusIndex == index) return
+			this.selectedStatusIndex = index
+			this.resetAndLoad()
+		},
+		selectRating(index : number) {
+			if (this.selectedRatingIndex == index) return
+			this.selectedRatingIndex = index
+			this.resetAndLoad()
+		},
+		loadStatistics() {
+			getAdminReviewStatistics().then((res) => {
+				const data = res.data as UTSJSONObject
+				this.statsTotal = (data.getNumber('total') ?? 0).toInt()
+				this.statsVisible = (data.getNumber('visible') ?? 0).toInt()
+				this.statsHidden = (data.getNumber('hidden') ?? 0).toInt()
+			}).catch((err) => {
+				console.error('获取评价统计失败:', err, " at pages/admin/reviews.uvue:169")
+			})
+		},
+		loadReviews() {
+			if (this.isLoading || !this.hasMore) return
+
+			this.isLoading = true
+			const statusValues = [-1, 1, 0]
+			const ratingValues = [0, 1, 2, 3, 4, 5]
+			const status = statusValues[this.selectedStatusIndex]
+			const rating = ratingValues[this.selectedRatingIndex]
+			getAdminReviews(this.pageNum, this.pageSize, this.searchKeyword, status, rating).then((res) => {
+				const data = res.data as UTSJSONObject
+				const records = data.getArray('records')
+				const total = (data.getNumber('total') ?? 0).toInt()
+
+				const newReviews : ReviewVO[] = []
+				if (records != null) {
+					for (let i = 0; i < records.length; i++) {
+						const item = records[i] as UTSJSONObject
+						newReviews.push({
+							id: (item.getNumber('id') ?? 0).toInt(),
+							productId: (item.getNumber('productId') ?? 0).toInt(),
+							productName: item.getString('productName') ?? '',
+							productMainImage: item.getString('productMainImage') ?? '',
+							userId: (item.getNumber('userId') ?? 0).toInt(),
+							userNickname: item.getString('userNickname') ?? '',
+							userAvatar: item.getString('userAvatar') ?? '',
+							orderId: (item.getNumber('orderId') ?? 0).toInt(),
+							rating: (item.getNumber('rating') ?? 5).toInt(),
+							content: item.getString('content') ?? '',
+							images: item.getString('images') ?? '',
+							replyContent: item.getString('replyContent'),
+							replyTime: item.getString('replyTime'),
+							status: (item.getNumber('status') ?? 1).toInt(),
+							createTime: item.getString('createTime') ?? ''
+						} as ReviewVO)
+					}
+				}
+
+				if (this.pageNum === 1) {
+					this.reviews = newReviews
+				} else {
+					this.reviews = this.reviews.concat(newReviews)
+				}
+
+				this.hasMore = this.reviews.length < total
+				this.pageNum++
+				this.isLoading = false
+			}).catch((err) => {
+				console.error('获取评价列表失败:', err, " at pages/admin/reviews.uvue:219")
+				this.isLoading = false
+				if (this.pageNum === 1) {
+					uni.showToast({ title: '加载失败', icon: 'none' })
+				}
+			})
+		},
+		loadMore() {
+			this.loadReviews()
+		},
+		getImages(imagesStr : string) : string[] {
+			if (imagesStr == null || imagesStr == '') return []
+			try {
+				const arr = UTSAndroid.consoleDebugError(JSON.parse(imagesStr), " at pages/admin/reviews.uvue:232")
+				if (Array.isArray(arr)) {
+					return arr as string[]
+				}
+			} catch (e) {
+				if (imagesStr.includes(',')) {
+					return imagesStr.split(',')
+				}
+			}
+			return [imagesStr]
+		},
+		previewImage(urls: string[], current: number) {
+			uni.previewImage({
+				urls: urls,
+				current: current
+			})
+		},
+		toggleStatus(item : ReviewVO) {
+			const newStatus = item.status === 1 ? 0 : 1
+			const actionName = newStatus === 1 ? '显示' : '隐藏'
+
+			uni.showModal({
+				title: '提示',
+				content: `确定要${actionName}该评价吗？`,
+				success: (res) => {
+					if (res.confirm) {
+						updateReviewStatus(item.id, newStatus).then(() => {
+							uni.showToast({ title: '操作成功', icon: 'success' })
+							item.status = newStatus
+							this.loadStatistics()
+						}).catch((err) => {
+							console.error('更新状态失败:', err, " at pages/admin/reviews.uvue:263")
+							uni.showToast({ title: '操作失败', icon: 'none' })
+						})
+					}
+				}
+			})
+		},
+		deleteReviewItem(id : number) {
+			uni.showModal({
+				title: '警告',
+				content: '确定要永久删除该评价吗？此操作不可恢复。',
+				confirmColor: '#ff4d4f',
+				success: (res) => {
+					if (res.confirm) {
+						deleteReview(id).then(() => {
+							uni.showToast({ title: '删除成功', icon: 'success' })
+							this.loadStatistics()
+							this.resetAndLoad()
+						}).catch((err) => {
+							console.error('删除评价失败:', err, " at pages/admin/reviews.uvue:282")
+							uni.showToast({ title: '删除失败', icon: 'none' })
+						})
+					}
+				}
+			})
+		}
+	}
+})
+
+export default __sfc__
+function GenPagesAdminReviewsRender(this: InstanceType<typeof __sfc__>): any | null {
+const _ctx = this
+const _cache = this.$.renderCache
+  return createElementVNode("view", utsMapOf({ class: "page-container" }), [
+    createElementVNode("view", utsMapOf({ class: "top-panel" }), [
+      createElementVNode("view", utsMapOf({ class: "stats-bar" }), [
+        createElementVNode("view", utsMapOf({ class: "stats-item" }), [
+          createElementVNode("text", utsMapOf({ class: "stats-label" }), "总评价"),
+          createElementVNode("text", utsMapOf({ class: "stats-value" }), toDisplayString(_ctx.statsTotal), 1 /* TEXT */)
+        ]),
+        createElementVNode("view", utsMapOf({ class: "stats-item" }), [
+          createElementVNode("text", utsMapOf({ class: "stats-label" }), "显示中"),
+          createElementVNode("text", utsMapOf({ class: "stats-value stats-value-success" }), toDisplayString(_ctx.statsVisible), 1 /* TEXT */)
+        ]),
+        createElementVNode("view", utsMapOf({ class: "stats-item" }), [
+          createElementVNode("text", utsMapOf({ class: "stats-label" }), "已隐藏"),
+          createElementVNode("text", utsMapOf({ class: "stats-value stats-value-danger" }), toDisplayString(_ctx.statsHidden), 1 /* TEXT */)
+        ])
+      ]),
+      createElementVNode("view", utsMapOf({ class: "search-bar" }), [
+        createElementVNode("text", utsMapOf({ class: "search-icon" }), "🔍"),
+        createElementVNode("input", utsMapOf({
+          class: "search-input",
+          modelValue: _ctx.searchKeyword,
+          onInput: ($event: InputEvent) => {(_ctx.searchKeyword) = $event.detail.value},
+          placeholder: "搜索评价内容 / 用户昵称",
+          onConfirm: _ctx.handleSearch
+        }), null, 40 /* PROPS, NEED_HYDRATION */, ["modelValue", "onInput", "onConfirm"])
+      ]),
+      createElementVNode("view", utsMapOf({ class: "filter-bar" }), [
+        createElementVNode("view", utsMapOf({ class: "filter-group" }), [
+          createElementVNode("text", utsMapOf({ class: "filter-title" }), "状态"),
+          createElementVNode("view", utsMapOf({ class: "filter-options" }), [
+            createElementVNode(Fragment, null, RenderHelpers.renderList(_ctx.statusOptions, (label, index, __index, _cached): any => {
+              return createElementVNode("text", utsMapOf({
+                key: 'status-' + index,
+                class: normalizeClass(["filter-chip", utsMapOf({ 'filter-chip-active': _ctx.selectedStatusIndex === index })]),
+                onClick: () => {_ctx.selectStatus(index)}
+              }), toDisplayString(label), 11 /* TEXT, CLASS, PROPS */, ["onClick"])
+            }), 128 /* KEYED_FRAGMENT */)
+          ])
+        ]),
+        createElementVNode("view", utsMapOf({ class: "filter-group" }), [
+          createElementVNode("text", utsMapOf({ class: "filter-title" }), "评分"),
+          createElementVNode("view", utsMapOf({ class: "filter-options" }), [
+            createElementVNode(Fragment, null, RenderHelpers.renderList(_ctx.ratingOptions, (label, index, __index, _cached): any => {
+              return createElementVNode("text", utsMapOf({
+                key: 'rating-' + index,
+                class: normalizeClass(["filter-chip", utsMapOf({ 'filter-chip-active': _ctx.selectedRatingIndex === index })]),
+                onClick: () => {_ctx.selectRating(index)}
+              }), toDisplayString(label), 11 /* TEXT, CLASS, PROPS */, ["onClick"])
+            }), 128 /* KEYED_FRAGMENT */)
+          ])
+        ])
+      ])
+    ]),
+    createElementVNode("scroll-view", utsMapOf({
+      class: "review-list",
+      "scroll-y": "true",
+      onScrolltolower: _ctx.loadMore
+    }), [
+      isTrue(_ctx.reviews.length === 0 && !_ctx.isLoading)
+        ? createElementVNode("view", utsMapOf({
+            key: 0,
+            class: "empty-state"
+          }), [
+            createElementVNode("text", utsMapOf({ class: "empty-icon" }), "📝"),
+            createElementVNode("text", utsMapOf({ class: "empty-text" }), "暂无评价")
+          ])
+        : createCommentVNode("v-if", true),
+      createElementVNode(Fragment, null, RenderHelpers.renderList(_ctx.reviews, (item, index, __index, _cached): any => {
+        return createElementVNode("view", utsMapOf({
+          class: "review-card",
+          key: index
+        }), [
+          createElementVNode("view", utsMapOf({ class: "review-header" }), [
+            createElementVNode("view", utsMapOf({ class: "user-info" }), [
+              createElementVNode("image", utsMapOf({
+                class: "avatar",
+                src: item.userAvatar,
+                mode: "aspectFill"
+              }), null, 8 /* PROPS */, ["src"]),
+              createElementVNode("view", utsMapOf({ class: "user-meta" }), [
+                createElementVNode("text", utsMapOf({ class: "nickname" }), toDisplayString(item.userNickname), 1 /* TEXT */),
+                createElementVNode("text", utsMapOf({ class: "review-time" }), toDisplayString(item.createTime), 1 /* TEXT */)
+              ])
+            ]),
+            createElementVNode("text", utsMapOf({
+              class: normalizeClass(["status-tag", item.status === 1 ? 'status-tag-visible' : 'status-tag-hidden'])
+            }), toDisplayString(item.status === 1 ? '显示中' : '已隐藏'), 3 /* TEXT, CLASS */)
+          ]),
+          createElementVNode("view", utsMapOf({ class: "action-box" }), [
+            createElementVNode("button", utsMapOf({
+              class: "action-btn",
+              onClick: () => {_ctx.toggleStatus(item)}
+            }), toDisplayString(item.status === 1 ? '隐藏' : '显示'), 9 /* TEXT, PROPS */, ["onClick"]),
+            createElementVNode("button", utsMapOf({
+              class: "action-btn action-btn-danger",
+              onClick: () => {_ctx.deleteReviewItem(item.id)}
+            }), "删除", 8 /* PROPS */, ["onClick"])
+          ]),
+          createElementVNode("view", utsMapOf({ class: "rating-stars" }), [
+            createElementVNode(Fragment, null, RenderHelpers.renderList(5, (i, __key, __index, _cached): any => {
+              return createElementVNode("text", utsMapOf({
+                class: normalizeClass(["star-icon", utsMapOf({ 'star-icon-active': i <= item.rating })]),
+                key: i
+              }), "★", 2 /* CLASS */)
+            }), 64 /* STABLE_FRAGMENT */)
+          ]),
+          createElementVNode("view", utsMapOf({ class: "review-content" }), [
+            createElementVNode("text", utsMapOf({
+              class: normalizeClass(["content-text", utsMapOf({ 'content-text-hidden': item.status === 0 })])
+            }), toDisplayString(item.content), 3 /* TEXT, CLASS */),
+            isTrue(item.images)
+              ? createElementVNode("view", utsMapOf({
+                  key: 0,
+                  class: "image-list"
+                }), [
+                  createElementVNode(Fragment, null, RenderHelpers.renderList(_ctx.getImages(item.images), (img, imgIdx, __index, _cached): any => {
+                    return createElementVNode("image", utsMapOf({
+                      class: "review-img",
+                      key: imgIdx,
+                      src: img,
+                      mode: "aspectFill",
+                      onClick: () => {_ctx.previewImage(_ctx.getImages(item.images), imgIdx)}
+                    }), null, 8 /* PROPS */, ["src", "onClick"])
+                  }), 128 /* KEYED_FRAGMENT */)
+                ])
+              : createCommentVNode("v-if", true)
+          ]),
+          createElementVNode("view", utsMapOf({
+            class: "product-info",
+            onClick: () => {_ctx.goToProduct(item.productId)}
+          }), [
+            createElementVNode("image", utsMapOf({
+              class: "product-img",
+              src: item.productMainImage,
+              mode: "aspectFill"
+            }), null, 8 /* PROPS */, ["src"]),
+            createElementVNode("text", utsMapOf({ class: "product-name" }), toDisplayString(item.productName), 1 /* TEXT */)
+          ], 8 /* PROPS */, ["onClick"])
+        ])
+      }), 128 /* KEYED_FRAGMENT */),
+      isTrue(_ctx.isLoading)
+        ? createElementVNode("view", utsMapOf({
+            key: 1,
+            class: "loading-more"
+          }), [
+            createElementVNode("text", utsMapOf({ class: "loading-text" }), "加载中...")
+          ])
+        : createCommentVNode("v-if", true),
+      isTrue(!_ctx.hasMore && _ctx.reviews.length > 0)
+        ? createElementVNode("view", utsMapOf({
+            key: 2,
+            class: "no-more"
+          }), [
+            createElementVNode("text", utsMapOf({ class: "no-more-text" }), "没有更多了")
+          ])
+        : createCommentVNode("v-if", true),
+      createElementVNode("view", utsMapOf({
+        style: normalizeStyle(utsMapOf({"height":"40rpx"}))
+      }), null, 4 /* STYLE */)
+    ], 40 /* PROPS, NEED_HYDRATION */, ["onScrolltolower"])
+  ])
+}
+const GenPagesAdminReviewsStyles = [utsMapOf([["page-container", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "column"], ["flex", 1], ["backgroundColor", "#f7f8fa"]]))], ["top-panel", padStyleMapOf(utsMapOf([["backgroundImage", "linear-gradient(180deg, #f4f8ff 0%, #f7f8fa 100%)"], ["backgroundColor", "rgba(0,0,0,0)"], ["paddingTop", 10], ["paddingRight", 10], ["paddingBottom", 6], ["paddingLeft", 10]]))], ["stats-bar", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"], ["marginBottom", 8]]))], ["stats-item", padStyleMapOf(utsMapOf([["flex", 1], ["backgroundColor", "#ffffff"], ["borderTopLeftRadius", 10], ["borderTopRightRadius", 10], ["borderBottomRightRadius", 10], ["borderBottomLeftRadius", 10], ["paddingTop", 10], ["paddingRight", 8], ["paddingBottom", 10], ["paddingLeft", 8], ["marginRight", 6], ["boxShadow", "0 1px 6px rgba(0, 0, 0, 0.03)"], ["marginRight:last-child", 0]]))], ["stats-label", padStyleMapOf(utsMapOf([["fontSize", 11], ["color", "#8c8c8c"], ["display", "flex"], ["marginBottom", 2]]))], ["stats-value", padStyleMapOf(utsMapOf([["fontSize", 18], ["fontWeight", "700"], ["color", "#1f2329"]]))], ["stats-value-success", padStyleMapOf(utsMapOf([["color", "#00b578"]]))], ["stats-value-danger", padStyleMapOf(utsMapOf([["color", "#ff4d4f"]]))], ["nav-bar", padStyleMapOf(utsMapOf([["height", 44], ["backgroundColor", "#ffffff"], ["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["justifyContent", "space-between"], ["paddingTop", CSS_VAR_STATUS_BAR_HEIGHT], ["paddingRight", 16], ["paddingBottom", 0], ["paddingLeft", 16], ["boxShadow", "0 1px 4px rgba(0, 0, 0, 0.05)"], ["zIndex", 100]]))], ["nav-back", padStyleMapOf(utsMapOf([["width", 40], ["height", 44], ["display", "flex"], ["alignItems", "center"]]))], ["back-icon", padStyleMapOf(utsMapOf([["fontSize", 28], ["color", "#333333"]]))], ["nav-title", padStyleMapOf(utsMapOf([["fontSize", 16], ["fontWeight", "bold"], ["color", "#333333"]]))], ["nav-placeholder", padStyleMapOf(utsMapOf([["width", 40]]))], ["search-bar", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["paddingTop", 8], ["paddingRight", 10], ["paddingBottom", 8], ["paddingLeft", 10], ["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["borderTopLeftRadius", 10], ["borderTopRightRadius", 10], ["borderBottomRightRadius", 10], ["borderBottomLeftRadius", 10], ["boxShadow", "0 1px 6px rgba(0, 0, 0, 0.03)"]]))], ["filter-bar", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["paddingTop", 10], ["paddingRight", 10], ["paddingBottom", 10], ["paddingLeft", 10], ["marginTop", 8], ["borderTopLeftRadius", 10], ["borderTopRightRadius", 10], ["borderBottomRightRadius", 10], ["borderBottomLeftRadius", 10], ["boxShadow", "0 1px 6px rgba(0, 0, 0, 0.03)"]]))], ["filter-group", padStyleMapOf(utsMapOf([["marginBottom", 8], ["marginBottom:last-child", 0]]))], ["filter-title", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"], ["marginBottom", 6], ["display", "flex"]]))], ["filter-options", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["flexWrap", "wrap"]]))], ["filter-chip", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#666666"], ["backgroundColor", "#f5f6f8"], ["paddingTop", 6], ["paddingRight", 12], ["paddingBottom", 6], ["paddingLeft", 12], ["borderTopLeftRadius", 14], ["borderTopRightRadius", 14], ["borderBottomRightRadius", 14], ["borderBottomLeftRadius", 14], ["marginRight", 8], ["marginBottom", 6], ["borderTopWidth", 1], ["borderRightWidth", 1], ["borderBottomWidth", 1], ["borderLeftWidth", 1], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "rgba(0,0,0,0)"], ["borderRightColor", "rgba(0,0,0,0)"], ["borderBottomColor", "rgba(0,0,0,0)"], ["borderLeftColor", "rgba(0,0,0,0)"]]))], ["filter-chip-active", padStyleMapOf(utsMapOf([["color", "#1677ff"], ["backgroundColor", "#eaf3ff"], ["borderTopColor", "#bcd8ff"], ["borderRightColor", "#bcd8ff"], ["borderBottomColor", "#bcd8ff"], ["borderLeftColor", "#bcd8ff"], ["fontWeight", "bold"]]))], ["search-icon", padStyleMapOf(utsMapOf([["fontSize", 16], ["color", "#999999"], ["marginRight", 8]]))], ["search-input", padStyleMapOf(utsMapOf([["flex", 1], ["height", 34], ["backgroundColor", "#f5f6f8"], ["borderTopLeftRadius", 17], ["borderTopRightRadius", 17], ["borderBottomRightRadius", 17], ["borderBottomLeftRadius", 17], ["paddingTop", 0], ["paddingRight", 12], ["paddingBottom", 0], ["paddingLeft", 12], ["fontSize", 14]]))], ["review-list", padStyleMapOf(utsMapOf([["flex", 1], ["paddingTop", 0], ["paddingRight", 10], ["paddingBottom", 10], ["paddingLeft", 10]]))], ["review-card", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["borderTopLeftRadius", 12], ["borderTopRightRadius", 12], ["borderBottomRightRadius", 12], ["borderBottomLeftRadius", 12], ["paddingTop", 12], ["paddingRight", 12], ["paddingBottom", 12], ["paddingLeft", 12], ["marginBottom", 10], ["borderTopWidth", 1], ["borderRightWidth", 1], ["borderBottomWidth", 1], ["borderLeftWidth", 1], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#f0f2f5"], ["borderRightColor", "#f0f2f5"], ["borderBottomColor", "#f0f2f5"], ["borderLeftColor", "#f0f2f5"], ["boxShadow", "0 2px 8px rgba(22, 119, 255, 0.04)"]]))], ["review-header", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"], ["alignItems", "center"], ["marginBottom", 12]]))], ["user-info", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"]]))], ["avatar", padStyleMapOf(utsMapOf([["width", 40], ["height", 40], ["borderTopLeftRadius", 20], ["borderTopRightRadius", 20], ["borderBottomRightRadius", 20], ["borderBottomLeftRadius", 20], ["backgroundColor", "#eeeeee"], ["marginRight", 10]]))], ["user-meta", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "column"]]))], ["nickname", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#1f2329"], ["fontWeight", "700"]]))], ["review-time", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"], ["marginTop", 2]]))], ["action-box", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"]]))], ["status-tag", padStyleMapOf(utsMapOf([["fontSize", 11], ["paddingTop", 4], ["paddingRight", 8], ["paddingBottom", 4], ["paddingLeft", 8], ["borderTopLeftRadius", 10], ["borderTopRightRadius", 10], ["borderBottomRightRadius", 10], ["borderBottomLeftRadius", 10], ["marginRight", 6]]))], ["status-tag-visible", padStyleMapOf(utsMapOf([["color", "#00a870"], ["backgroundColor", "#e8fff5"]]))], ["status-tag-hidden", padStyleMapOf(utsMapOf([["color", "#ff4d4f"], ["backgroundColor", "#fff1f0"]]))], ["action-btn", padStyleMapOf(utsMapOf([["marginTop", 0], ["marginRight", 0], ["marginBottom", 0], ["marginLeft", 6], ["paddingTop", 0], ["paddingRight", 12], ["paddingBottom", 0], ["paddingLeft", 12], ["height", 30], ["lineHeight", "30px"], ["fontSize", 12], ["backgroundColor", "#f5f6f8"], ["color", "#333333"], ["borderTopLeftRadius", 15], ["borderTopRightRadius", 15], ["borderBottomRightRadius", 15], ["borderBottomLeftRadius", 15]]))], ["action-btn-danger", padStyleMapOf(utsMapOf([["color", "#ff4d4f"], ["backgroundColor", "#ffebee"]]))], ["rating-stars", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["marginBottom", 8]]))], ["star-icon", padStyleMapOf(utsMapOf([["fontSize", 15], ["color", "#e8e8e8"], ["marginRight", 2]]))], ["star-icon-active", padStyleMapOf(utsMapOf([["color", "#ffb400"]]))], ["review-content", padStyleMapOf(utsMapOf([["marginBottom", 12]]))], ["content-text", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#333333"], ["lineHeight", 1.6], ["marginBottom", 10]]))], ["content-text-hidden", padStyleMapOf(utsMapOf([["color", "#999999"], ["fontStyle", "italic"]]))], ["image-list", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["flexWrap", "wrap"]]))], ["review-img", padStyleMapOf(utsMapOf([["width", 84], ["height", 84], ["borderTopLeftRadius", 8], ["borderTopRightRadius", 8], ["borderBottomRightRadius", 8], ["borderBottomLeftRadius", 8], ["marginRight", 8], ["marginBottom", 8], ["backgroundColor", "#f5f5f5"], ["borderTopWidth", 1], ["borderRightWidth", 1], ["borderBottomWidth", 1], ["borderLeftWidth", 1], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#f0f0f0"], ["borderRightColor", "#f0f0f0"], ["borderBottomColor", "#f0f0f0"], ["borderLeftColor", "#f0f0f0"]]))], ["product-info", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["backgroundColor", "#f7f9fc"], ["paddingTop", 8], ["paddingRight", 8], ["paddingBottom", 8], ["paddingLeft", 8], ["borderTopLeftRadius", 8], ["borderTopRightRadius", 8], ["borderBottomRightRadius", 8], ["borderBottomLeftRadius", 8]]))], ["product-img", padStyleMapOf(utsMapOf([["width", 42], ["height", 42], ["borderTopLeftRadius", 6], ["borderTopRightRadius", 6], ["borderBottomRightRadius", 6], ["borderBottomLeftRadius", 6], ["marginRight", 8], ["backgroundColor", "#eeeeee"]]))], ["product-name", padStyleMapOf(utsMapOf([["flex", 1], ["fontSize", 13], ["color", "#5f6773"], ["whiteSpace", "nowrap"], ["overflow", "hidden"], ["textOverflow", "ellipsis"]]))], ["empty-state", padStyleMapOf(utsMapOf([["paddingTop", 30], ["paddingRight", 30], ["paddingBottom", 30], ["paddingLeft", 30], ["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["loading-more", padStyleMapOf(utsMapOf([["paddingTop", 30], ["paddingRight", 30], ["paddingBottom", 30], ["paddingLeft", 30], ["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["no-more", padStyleMapOf(utsMapOf([["paddingTop", 30], ["paddingRight", 30], ["paddingBottom", 30], ["paddingLeft", 30], ["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["empty-icon", padStyleMapOf(utsMapOf([["fontSize", 48], ["marginBottom", 16]]))], ["empty-text", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#999999"]]))], ["loading-text", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#999999"]]))], ["no-more-text", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#999999"]]))]])]

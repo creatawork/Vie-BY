@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.vie.db.mapper.ProductMapper">
+
+    <!-- 商品结果映射 -->
+    <resultMap id="ProductResultMap" type="com.vie.db.entity.Product">
+        <id column="id" property="id"/>
+        <result column="category_id" property="categoryId"/>
+        <result column="seller_id" property="sellerId"/>
+        <result column="product_name" property="productName"/>
+        <result column="product_code" property="productCode"/>
+        <result column="main_image" property="mainImage"/>
+        <result column="description" property="description"/>
+        <result column="detail" property="detail"/>
+        <result column="original_price" property="originalPrice"/>
+        <result column="current_price" property="currentPrice"/>
+        <result column="stock" property="stock"/>
+        <result column="sales_volume" property="salesVolume"/>
+        <result column="view_count" property="viewCount"/>
+        <result column="status" property="status"/>
+        <result column="is_recommended" property="isRecommended"/>
+        <result column="is_new" property="isNew"/>
+        <result column="is_hot" property="isHot"/>
+        <result column="audit_remark" property="auditRemark"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="is_deleted" property="isDeleted"/>
+        <!-- 关联分类 -->
+        <association property="category" javaType="com.vie.db.entity.Category">
+            <id column="c_id" property="id"/>
+            <result column="c_category_name" property="categoryName"/>
+            <result column="c_category_icon" property="categoryIcon"/>
+        </association>
+    </resultMap>
+
+    <!-- 分页查询商品 -->
+    <select id="selectProductPage" resultMap="ProductResultMap">
+        SELECT
+            p.*,
+            c.id AS c_id,
+            c.category_name AS c_category_name,
+            c.category_icon AS c_category_icon
+        FROM product p
+        LEFT JOIN category c ON p.category_id = c.id
+        WHERE p.is_deleted = 0
+        <if test="categoryId != null">
+            AND p.category_id = #{categoryId}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (p.product_name LIKE CONCAT('%', #{keyword}, '%')
+            OR p.description LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null">
+            AND p.status = #{status}
+        </if>
+        ORDER BY p.create_time DESC
+    </select>
+
+    <!-- 查询商品详情 -->
+    <select id="selectProductDetailById" resultMap="ProductDetailResultMap">
+        SELECT
+            p.*,
+            c.id AS c_id,
+            c.category_name AS c_category_name,
+            c.category_icon AS c_category_icon,
+            pi.id AS img_id,
+            pi.image_url AS img_url,
+            pi.sort_order AS img_sort,
+            pi.image_type AS img_type,
+            ps.id AS sku_id,
+            ps.sku_name AS sku_name,
+            ps.sku_code AS sku_code,
+            ps.sku_image AS sku_image,
+            ps.price AS sku_price,
+            ps.stock AS sku_stock,
+            ps.sales_volume AS sku_sales,
+            ps.spec_info AS sku_spec,
+            ps.status AS sku_status
+        FROM product p
+        LEFT JOIN category c ON p.category_id = c.id
+        LEFT JOIN product_image pi ON p.id = pi.product_id AND pi.is_deleted = 0
+        LEFT JOIN product_sku ps ON p.id = ps.product_id AND ps.is_deleted = 0
+        WHERE p.id = #{productId} AND p.is_deleted = 0
+        ORDER BY pi.sort_order ASC, ps.id ASC
+    </select>
+
+    <!-- 商品详情结果映射（包含图片和SKU） -->
+    <resultMap id="ProductDetailResultMap" type="com.vie.db.entity.Product">
+        <id column="id" property="id"/>
+        <result column="category_id" property="categoryId"/>
+        <result column="seller_id" property="sellerId"/>
+        <result column="product_name" property="productName"/>
+        <result column="product_code" property="productCode"/>
+        <result column="main_image" property="mainImage"/>
+        <result column="description" property="description"/>
+        <result column="detail" property="detail"/>
+        <result column="original_price" property="originalPrice"/>
+        <result column="current_price" property="currentPrice"/>
+        <result column="stock" property="stock"/>
+        <result column="sales_volume" property="salesVolume"/>
+        <result column="view_count" property="viewCount"/>
+        <result column="status" property="status"/>
+        <result column="is_recommended" property="isRecommended"/>
+        <result column="is_new" property="isNew"/>
+        <result column="is_hot" property="isHot"/>
+        <result column="audit_remark" property="auditRemark"/>
+        <result column="create_time" property="createTime"/>
+        <result column="update_time" property="updateTime"/>
+        <result column="is_deleted" property="isDeleted"/>
+        <!-- 关联分类 -->
+        <association property="category" javaType="com.vie.db.entity.Category">
+            <id column="c_id" property="id"/>
+            <result column="c_category_name" property="categoryName"/>
+            <result column="c_category_icon" property="categoryIcon"/>
+        </association>
+        <!-- 关联图片列表 -->
+        <collection property="images" ofType="com.vie.db.entity.ProductImage">
+            <id column="img_id" property="id"/>
+            <result column="id" property="productId"/>
+            <result column="img_url" property="imageUrl"/>
+            <result column="img_sort" property="sortOrder"/>
+            <result column="img_type" property="imageType"/>
+        </collection>
+        <!-- 关联SKU列表 -->
+        <collection property="skuList" ofType="com.vie.db.entity.ProductSku">
+            <id column="sku_id" property="id"/>
+            <result column="id" property="productId"/>
+            <result column="sku_name" property="skuName"/>
+            <result column="sku_code" property="skuCode"/>
+            <result column="sku_image" property="skuImage"/>
+            <result column="sku_price" property="price"/>
+            <result column="sku_stock" property="stock"/>
+            <result column="sku_sales" property="salesVolume"/>
+            <result column="sku_spec" property="specInfo"/>
+            <result column="sku_status" property="status"/>
+        </collection>
+    </resultMap>
+
+</mapper>

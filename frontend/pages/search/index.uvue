@@ -1,0 +1,246 @@
+<template>
+  <view class="search-page">
+    <!-- 顶部搜索栏 -->
+    <view class="header">
+      <view class="header-content">
+        <view class="back-btn" @click="goBack">
+          <text class="back-icon">←</text>
+        </view>
+        <view class="search-input-box">
+          <text class="search-icon">🔍</text>
+          <input 
+            class="search-input" 
+            v-model="keyword" 
+            placeholder="搜索商品" 
+            confirm-type="search"
+            :focus="true"
+            @confirm="handleSearch"
+          />
+          <view class="clear-btn" v-if="keyword.length > 0" @click="clearKeyword">
+            <text class="clear-icon">✕</text>
+          </view>
+        </view>
+        <text class="search-btn" @click="handleSearch">搜索</text>
+      </view>
+    </view>
+
+    <!-- 内容区域 -->
+    <view class="content">
+      <!-- 热门搜索 -->
+      <view class="section">
+        <view class="section-header">
+          <text class="section-title">热门搜索</text>
+        </view>
+        <view class="tags-container">
+          <text 
+            class="tag tag-hot" 
+            v-for="(item, index) in hotKeywords" 
+            :key="index"
+            @click="doSearch(item)"
+          >{{ item }}</text>
+        </view>
+      </view>
+
+      <!-- 搜索历史 -->
+      <view class="section" v-if="history.length > 0">
+        <view class="section-header">
+          <text class="section-title">历史搜索</text>
+          <text class="clear-history" @click="clearHistory">🗑️</text>
+        </view>
+        <view class="tags-container">
+          <text 
+            class="tag" 
+            v-for="(item, index) in history" 
+            :key="index"
+            @click="doSearch(item)"
+          >{{ item }}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+export default {
+  data() {
+    return {
+      keyword: '',
+      hotKeywords: [] as string[],
+      history: [] as string[]
+    }
+  },
+  onLoad() {
+    // 读取历史记录
+    const storedHistory = uni.getStorageSync('search_history') as string | null
+    if (storedHistory != null && storedHistory != '') {
+      try {
+        // UTS 中 JSON.parse 需要处理类型转换
+        // 这里简化处理，假设存储的是 JSON 字符串
+        // 实际 UTS 中可能需要更严谨的类型转换
+        // this.history = JSON.parse(storedHistory as string)
+      } catch (e) {}
+    }
+  },
+  methods: {
+    goBack() {
+      uni.navigateBack({})
+    },
+    clearKeyword() {
+      this.keyword = ''
+    },
+    handleSearch() {
+      const trimmedKeyword = this.keyword.trim()
+      if (trimmedKeyword == '') return
+      this.doSearch(this.keyword)
+    },
+    doSearch(key : string) {
+      this.keyword = key
+      this.saveHistory(key)
+      // 跳转到商品列表页并传递搜索关键词
+      uni.navigateTo({
+        url: `/pages/product/list?keyword=${key}`
+      })
+    },
+    saveHistory(key : string) {
+      // 简单去重并添加到头部
+      const index = this.history.indexOf(key)
+      if (index > -1) {
+        this.history.splice(index, 1)
+      }
+      this.history.unshift(key)
+      if (this.history.length > 10) {
+        this.history.pop()
+      }
+      uni.setStorageSync('search_history', JSON.stringify(this.history))
+    },
+    clearHistory() {
+      this.history = []
+      uni.removeStorageSync('search_history')
+    }
+  }
+}
+</script>
+
+<style lang="scss" scoped>
+.search-page {
+  background-color: #fff;
+  /* 去掉 100vh，使用内部 flex 布局撑满 */
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  padding-top: var(--status-bar-height);
+  background-color: #fff;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.header-content {
+  height: 44px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 0 12px;
+}
+
+.back-btn {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.back-icon {
+  font-size: 20px;
+  color: #333;
+}
+
+.search-input-box {
+  flex: 1;
+  height: 32px;
+  background-color: #f5f5f5;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 0 10px;
+}
+
+.search-icon {
+  font-size: 14px;
+  color: #999;
+  margin-right: 6px;
+}
+
+.search-input {
+  flex: 1;
+  font-size: 14px;
+  color: #333;
+  background-color: transparent;
+}
+
+.clear-btn {
+  padding: 4px;
+}
+
+.clear-icon {
+  font-size: 12px;
+  color: #999;
+}
+
+.search-btn {
+  font-size: 14px;
+  color: #0066CC;
+  /* 500 改为 400 */
+  font-weight: 400;
+  padding: 0 4px;
+}
+
+.content {
+  padding: 20px 16px;
+}
+
+.section {
+  margin-bottom: 24px;
+}
+
+.section-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: bold;
+  color: #333;
+}
+
+.clear-history {
+  font-size: 14px;
+}
+
+.tags-container {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.tag {
+  font-size: 12px;
+  color: #666;
+  background-color: #f5f5f5;
+  padding: 6px 12px;
+  border-radius: 14px;
+  margin-right: 10px;
+  margin-bottom: 10px;
+}
+
+.tag-hot {
+  color: #0066CC;
+  background-color: rgba(0, 102, 204, 0.05);
+}
+</style>

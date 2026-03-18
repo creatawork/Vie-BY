@@ -1,0 +1,543 @@
+
+import { getFullLocationInfo, reverseGeocode, LocationInfoType } from '@/utils/location'
+import BottomNav from '@/components/BottomNav.uvue'
+import { addToCart as addToCartApi, type CartAddParams } from '@/api/cart'
+import { get } from '@/utils/request'
+
+type BannerType = { __$originalPosition?: UTSSourceMapPosition<"BannerType", "pages/index/index.uvue", 169, 6>;
+  image : string
+  title : string
+  link : string
+}
+
+type CategoryType = { __$originalPosition?: UTSSourceMapPosition<"CategoryType", "pages/index/index.uvue", 175, 6>;
+  id : number
+  name : string
+  icon : string
+  bgColor : string
+  keyword : string
+}
+
+type HotProductType = { __$originalPosition?: UTSSourceMapPosition<"HotProductType", "pages/index/index.uvue", 183, 6>;
+  id : number
+  name : string
+  desc : string
+  price : string
+  originPrice? : string
+  image : string
+  tag : string
+}
+
+type LocationCacheType = { __$originalPosition?: UTSSourceMapPosition<"LocationCacheType", "pages/index/index.uvue", 193, 6>;
+  timestamp : number
+  location : LocationInfoType
+}
+
+const __sfc__ = defineComponent({
+  components: {
+    BottomNav
+  },
+  data() {
+    return {
+      isCheckingAuth: true,
+      currentLocation: '定位中...',
+      locationInfo: null as LocationInfoType | null, // 保存完整地址信息
+      services: ['源头直供', '坏单包赔', '极速达'],
+      banners: [
+        {
+          image: 'https://picsum.photos/750/350?random=1',
+          title: '新鲜蔬菜直供',
+          link: '/pages/product/list?category=vegetable'
+        },
+        {
+          image: 'https://picsum.photos/750/350?random=2',
+          title: '优质水果精选',
+          link: '/pages/product/list?category=fruit'
+        },
+        {
+          image: 'https://picsum.photos/750/350?random=3',
+          title: '海鲜水产特惠',
+          link: '/pages/product/list?category=seafood'
+        }
+      ] as BannerType[],
+      categories: [
+        { id: 1, name: '蔬菜豆制品', icon: '🥬', bgColor: '#e8f5e9', keyword: '蔬菜' },
+        { id: 2, name: '时令水果', icon: '🍎', bgColor: '#fff3e0', keyword: '水果' },
+        { id: 3, name: '肉禽蛋品', icon: '🥩', bgColor: '#ffebee', keyword: '肉' },
+        { id: 4, name: '海鲜水产', icon: '🐟', bgColor: '#e3f2fd', keyword: '海鲜' },
+        { id: 5, name: '乳品烘焙', icon: '🥛', bgColor: '#f3e5f5', keyword: '乳品' },
+        { id: 6, name: '粮油调味', icon: '🌾', bgColor: '#fff8e1', keyword: '粮油' },
+        { id: 7, name: '速食冷冻', icon: '🥟', bgColor: '#e0f7fa', keyword: '速食' },
+        { id: 8, name: '酒水饮料', icon: '🥤', bgColor: '#fce4ec', keyword: '饮料' }
+      ] as CategoryType[],
+      hotProducts: [] as HotProductType[]
+    }
+  },
+  computed: {
+    // 简单的左右分栏逻辑
+    leftColumnProducts() : HotProductType[] {
+      return this.hotProducts.filter((_ : HotProductType, index : number) : boolean => index % 2 === 0) as HotProductType[]
+    },
+    rightColumnProducts() : HotProductType[] {
+      return this.hotProducts.filter((_ : HotProductType, index : number) : boolean => index % 2 !== 0) as HotProductType[]
+    }
+  },
+  onLoad() {
+    // 管理员身份校验：如果是管理员，重定向到管理员工作台
+    const userInfoStr = uni.getStorageSync('user_info') as string
+    if (userInfoStr != null && userInfoStr != '') {
+      try {
+        const userInfo = UTSAndroid.consoleDebugError(JSON.parse(userInfoStr), " at pages/index/index.uvue:252") as UTSJSONObject
+        const roleCodes = userInfo.getAny('roleCodes')
+        if (roleCodes != null) {
+          const roles = roleCodes as any[]
+          if (roles.includes('ROLE_ADMIN') || roles.includes('ADMIN')) {
+            uni.reLaunch({
+              url: '/pages/seller/admin-index'
+            })
+            return
+          }
+        }
+      } catch (e) {
+        console.error('解析用户信息失败:', e, " at pages/index/index.uvue:264")
+      }
+    }
+
+    // 校验完成，允许渲染普通用户界面
+    this.isCheckingAuth = false
+    this.initLocation()
+    this.loadHotProducts()
+  },
+  onShow() {
+    // 页面显示时刷新底部导航栏
+    uni.$emit('bottomNavRefresh')
+  },
+  methods: {
+    /**
+     * 初始化定位
+     */
+    initLocation() {
+      // 显示加载状态
+      this.currentLocation = '定位中...'
+
+      getFullLocationInfo()
+        .then((locationInfo) => {
+          // 显示格式化后的地址
+          let displayText = locationInfo.formattedAddress != '' ? locationInfo.formattedAddress : (locationInfo.district != '' ? locationInfo.district : '当前位置')
+
+          // 限制显示长度（避免过长）
+          if (displayText.length > 12) {
+            displayText = displayText.substring(0, 12) + '...'
+          }
+
+          this.currentLocation = displayText
+
+          // 保存完整地址信息，供后续使用
+          this.locationInfo = locationInfo
+
+          console.log('定位成功:', locationInfo, " at pages/index/index.uvue:300")
+        })
+        .catch((error) => {
+          console.error('定位失败:', error, " at pages/index/index.uvue:303")
+          this.currentLocation = '定位失败'
+          uni.showToast({
+            title: '定位失败，请重试',
+            icon: 'none',
+            duration: 2000
+          })
+        })
+    },
+
+    /**
+     * 获取缓存的定位信息（用于错误处理）
+     */
+    getCachedLocation() : LocationInfoType | null {
+      const cacheStr = uni.getStorageSync('location_cache') as string
+      if (cacheStr == null || cacheStr == '') {
+        return null
+      }
+
+      const cache = UTSAndroid.consoleDebugError(JSON.parse(cacheStr), " at pages/index/index.uvue:322") as LocationCacheType
+      if (Date.now() - cache.timestamp > 5 * 60 * 1000) {
+        return null
+      }
+
+      return cache.location as LocationInfoType
+    },
+    /**
+     * 手动选择位置
+     */
+    chooseLocation() {
+      uni.chooseLocation({
+        success: (res) => {
+          // 显示加载状态
+          this.currentLocation = '解析中...'
+
+          // 使用选择的经纬度进行逆地理编码
+          reverseGeocode(res.latitude, res.longitude).then((locationInfo) => {
+            let displayText = locationInfo.formattedAddress != '' ? locationInfo.formattedAddress : (locationInfo.district != '' ? locationInfo.district : '已选择位置')
+            if (displayText.length > 12) {
+              displayText = displayText.substring(0, 12) + '...'
+            }
+
+            this.currentLocation = displayText
+            this.locationInfo = locationInfo
+
+            uni.showToast({
+              title: '位置已更新',
+              icon: 'success',
+              duration: 1500
+            })
+          }).catch((error) => {
+            console.error('地址解析失败:', error, " at pages/index/index.uvue:354")
+            // 如果逆地理编码失败，使用选择的位置名称
+            this.currentLocation = res.name != '' ? res.name : '已选择位置'
+            uni.showToast({
+              title: '位置已更新',
+              icon: 'success',
+              duration: 1500
+            })
+          })
+        },
+        fail: (err) => {
+          console.error('选择位置失败:', err, " at pages/index/index.uvue:365")
+        }
+      })
+    },
+    goToSearch() {
+      uni.navigateTo({ url: '/pages/search/index' })
+    },
+    goToBanner(banner : BannerType) {
+      if (banner.link != null && banner.link !== '') {
+        uni.navigateTo({ url: banner.link })
+      }
+    },
+    goToCategory(category : CategoryType) {
+      uni.navigateTo({ url: `/pages/product/list?keyword=${UTSAndroid.consoleDebugError(encodeURIComponent(category.keyword), " at pages/index/index.uvue:378")}` })
+    },
+    goToSpecial() {
+      uni.navigateTo({ url: '/pages/product/list?type=special' })
+    },
+    goToDiscount() {
+      uni.navigateTo({ url: '/pages/product/list?type=discount' })
+    },
+    goToNew() {
+      uni.navigateTo({ url: '/pages/product/list?type=new' })
+    },
+    goToRecommend() {
+      uni.navigateTo({ url: '/pages/product/list?type=recommend' })
+    },
+    goToProduct(id : number) {
+      uni.navigateTo({ url: `/pages/product/detail?id=${id}` })
+    },
+    /**
+     * 加载热销商品
+     */
+    loadHotProducts() {
+      // 从API获取热销商品
+      get('/products/hot?limit=6').then((res) => {
+        const data = res.data as any[]
+        if (data != null && data.length > 0) {
+          const products : HotProductType[] = []
+          data.forEach((item : any) => {
+            const itemObj = item as UTSJSONObject
+            const isNew = itemObj.getBoolean('isNew') ?? false
+            const isHot = itemObj.getBoolean('isHot') ?? false
+            let tag = ''
+            if (isNew) {
+              tag = '新品'
+            } else if (isHot) {
+              tag = '热销'
+            }
+
+            products.push({
+              id: (itemObj.getNumber('id') ?? 0).toInt(),
+              name: itemObj.getString('productName') ?? '',
+              desc: itemObj.getString('description') ?? '',
+              price: (itemObj.getNumber('currentPrice') ?? 0).toString(),
+              originPrice: itemObj.getNumber('originalPrice')?.toString(),
+              image: itemObj.getString('mainImage') ?? '',
+              tag: tag
+            } as HotProductType)
+          })
+          this.hotProducts = products
+        }
+      }).catch((err) => {
+        console.error('获取热销商品失败:', err, " at pages/index/index.uvue:428")
+      })
+    },
+    addToCart(product : HotProductType) {
+      const params : CartAddParams = {
+        productId: product.id,
+        skuId: product.id,
+        quantity: 1
+      }
+      addToCartApi(params).then(() => {
+        uni.showToast({ title: '已加入购物车', icon: 'success' })
+        uni.$emit('bottomNavRefresh')
+      }).catch((err) => {
+        console.error('添加购物车失败:', err, " at pages/index/index.uvue:441")
+        uni.showToast({ title: '添加失败', icon: 'none' })
+      })
+    }
+  }
+})
+
+export default __sfc__
+function GenPagesIndexIndexRender(this: InstanceType<typeof __sfc__>): any | null {
+const _ctx = this
+const _cache = this.$.renderCache
+const _component_BottomNav = resolveComponent("BottomNav")
+
+  return createElementVNode("view", utsMapOf({ class: "page" }), [
+    isTrue(_ctx.isCheckingAuth)
+      ? createElementVNode("view", utsMapOf({
+          key: 0,
+          class: "auth-loading"
+        }), [
+          createElementVNode("view", utsMapOf({ class: "loading-bg" }))
+        ])
+      : createElementVNode(Fragment, utsMapOf({ key: 1 }), [
+          createElementVNode("view", utsMapOf({ class: "bg-decoration" })),
+          createElementVNode("view", utsMapOf({ class: "header" }), [
+            createElementVNode("view", utsMapOf({ class: "header-content" }), [
+              createElementVNode("view", utsMapOf({ class: "location-box" }), [
+                createElementVNode("text", utsMapOf({ class: "location-icon" }), "📍"),
+                createElementVNode("text", utsMapOf({
+                  class: "location-text",
+                  onClick: _ctx.chooseLocation
+                }), toDisplayString(_ctx.currentLocation), 9 /* TEXT, PROPS */, ["onClick"]),
+                createElementVNode("text", utsMapOf({ class: "arrow-icon" }), ">")
+              ]),
+              createElementVNode("view", utsMapOf({
+                class: "search-bar",
+                onClick: _ctx.goToSearch
+              }), [
+                createElementVNode("text", utsMapOf({ class: "search-icon" }), "🔍"),
+                createElementVNode("text", utsMapOf({ class: "search-placeholder" }), "搜索新鲜果蔬、肉蛋奶...")
+              ], 8 /* PROPS */, ["onClick"])
+            ])
+          ]),
+          createElementVNode("scroll-view", utsMapOf({
+            class: "content-scroll",
+            "scroll-y": "true",
+            "show-scrollbar": "false"
+          }), [
+            createElementVNode("view", utsMapOf({ class: "scroll-content" }), [
+              createElementVNode("view", utsMapOf({ class: "swiper-section" }), [
+                createElementVNode("swiper", utsMapOf({
+                  class: "main-swiper",
+                  autoplay: true,
+                  interval: 4000,
+                  circular: true,
+                  "indicator-dots": "true",
+                  "indicator-color": "rgba(255,255,255,0.6)",
+                  "indicator-active-color": "#ffffff"
+                }), [
+                  createElementVNode(Fragment, null, RenderHelpers.renderList(_ctx.banners, (banner, index, __index, _cached): any => {
+                    return createElementVNode("swiper-item", utsMapOf({
+                      key: index,
+                      class: "swiper-item",
+                      onClick: () => {_ctx.goToBanner(banner)}
+                    }), [
+                      createElementVNode("image", utsMapOf({
+                        class: "swiper-image",
+                        src: banner.image,
+                        mode: "aspectFill"
+                      }), null, 8 /* PROPS */, ["src"])
+                    ], 8 /* PROPS */, ["onClick"])
+                  }), 128 /* KEYED_FRAGMENT */)
+                ])
+              ]),
+              createElementVNode("view", utsMapOf({ class: "service-bar" }), [
+                createElementVNode(Fragment, null, RenderHelpers.renderList(_ctx.services, (item, index, __index, _cached): any => {
+                  return createElementVNode("view", utsMapOf({
+                    class: "service-item",
+                    key: index
+                  }), [
+                    createElementVNode("text", utsMapOf({ class: "service-icon" }), "✓"),
+                    createElementVNode("text", utsMapOf({ class: "service-text" }), toDisplayString(item), 1 /* TEXT */)
+                  ])
+                }), 128 /* KEYED_FRAGMENT */)
+              ]),
+              createElementVNode("view", utsMapOf({ class: "category-section" }), [
+                createElementVNode("view", utsMapOf({ class: "category-grid" }), [
+                  createElementVNode(Fragment, null, RenderHelpers.renderList(_ctx.categories, (category, index, __index, _cached): any => {
+                    return createElementVNode("view", utsMapOf({
+                      class: "category-item",
+                      key: index,
+                      onClick: () => {_ctx.goToCategory(category)}
+                    }), [
+                      createElementVNode("view", utsMapOf({
+                        class: "category-icon-box",
+                        style: normalizeStyle(utsMapOf({ backgroundColor: category.bgColor }))
+                      }), [
+                        createElementVNode("text", utsMapOf({ class: "category-emoji" }), toDisplayString(category.icon), 1 /* TEXT */)
+                      ], 4 /* STYLE */),
+                      createElementVNode("text", utsMapOf({ class: "category-name" }), toDisplayString(category.name), 1 /* TEXT */)
+                    ], 8 /* PROPS */, ["onClick"])
+                  }), 128 /* KEYED_FRAGMENT */)
+                ])
+              ]),
+              createElementVNode("view", utsMapOf({ class: "activity-section" }), [
+                createElementVNode("view", utsMapOf({
+                  class: "activity-card activity-card-big",
+                  onClick: _ctx.goToSpecial
+                }), [
+                  createElementVNode("view", utsMapOf({ class: "activity-info" }), [
+                    createElementVNode("text", utsMapOf({ class: "activity-title" }), "县域特色"),
+                    createElementVNode("text", utsMapOf({ class: "activity-desc" }), "源头直采 鲜味直达"),
+                    createElementVNode("text", utsMapOf({ class: "activity-btn" }), "去逛逛")
+                  ]),
+                  createElementVNode("image", utsMapOf({
+                    class: "activity-img",
+                    src: "https://picsum.photos/150/150?random=11",
+                    mode: "aspectFit"
+                  }))
+                ], 8 /* PROPS */, ["onClick"]),
+                createElementVNode("view", utsMapOf({ class: "activity-col activity-col-spaced" }), [
+                  createElementVNode("view", utsMapOf({
+                    class: "activity-card activity-card-small",
+                    onClick: _ctx.goToDiscount
+                  }), [
+                    createElementVNode("view", utsMapOf({ class: "activity-info" }), [
+                      createElementVNode("text", utsMapOf({ class: "activity-title activity-title-highlight" }), "限时特惠"),
+                      createElementVNode("text", utsMapOf({ class: "activity-desc" }), "低至5折起")
+                    ]),
+                    createElementVNode("image", utsMapOf({
+                      class: "activity-img",
+                      src: "https://picsum.photos/100/100?random=12",
+                      mode: "aspectFit"
+                    }))
+                  ], 8 /* PROPS */, ["onClick"]),
+                  createElementVNode("view", utsMapOf({
+                    class: "activity-card activity-card-small",
+                    onClick: _ctx.goToNew
+                  }), [
+                    createElementVNode("view", utsMapOf({ class: "activity-info" }), [
+                      createElementVNode("text", utsMapOf({ class: "activity-title" }), "新品尝鲜"),
+                      createElementVNode("text", utsMapOf({ class: "activity-desc" }), "每日上新")
+                    ]),
+                    createElementVNode("image", utsMapOf({
+                      class: "activity-img",
+                      src: "https://picsum.photos/100/100?random=13",
+                      mode: "aspectFit"
+                    }))
+                  ], 8 /* PROPS */, ["onClick"])
+                ])
+              ]),
+              createElementVNode("view", utsMapOf({ class: "recommend-section" }), [
+                createElementVNode("view", utsMapOf({ class: "section-header" }), [
+                  createElementVNode("text", utsMapOf({ class: "section-title" }), "热销推荐"),
+                  createElementVNode("view", utsMapOf({
+                    class: "section-more",
+                    onClick: _ctx.goToRecommend
+                  }), [
+                    createElementVNode("text", utsMapOf({ class: "section-more__text" }), "查看更多"),
+                    createElementVNode("text", utsMapOf({ class: "section-more__arrow" }), ">")
+                  ], 8 /* PROPS */, ["onClick"])
+                ]),
+                createElementVNode("view", utsMapOf({ class: "product-waterfall" }), [
+                  createElementVNode("view", utsMapOf({ class: "waterfall-col" }), [
+                    createElementVNode(Fragment, null, RenderHelpers.renderList(_ctx.leftColumnProducts, (product, __key, __index, _cached): any => {
+                      return createElementVNode("view", utsMapOf({
+                        class: "product-card",
+                        key: product.id,
+                        onClick: () => {_ctx.goToProduct(product.id)}
+                      }), [
+                        createElementVNode("view", utsMapOf({ class: "product-img-box" }), [
+                          createElementVNode("image", utsMapOf({
+                            class: "product-img",
+                            src: product.image,
+                            mode: "widthFix"
+                          }), null, 8 /* PROPS */, ["src"]),
+                          isTrue(product.tag)
+                            ? createElementVNode("view", utsMapOf({
+                                key: 0,
+                                class: "product-tag"
+                              }), [
+                                createElementVNode("text", utsMapOf({ class: "product-tag__text" }), toDisplayString(product.tag), 1 /* TEXT */)
+                              ])
+                            : createCommentVNode("v-if", true)
+                        ]),
+                        createElementVNode("view", utsMapOf({ class: "product-info" }), [
+                          createElementVNode("text", utsMapOf({ class: "product-name" }), toDisplayString(product.name), 1 /* TEXT */),
+                          createElementVNode("text", utsMapOf({ class: "product-desc" }), toDisplayString(product.desc), 1 /* TEXT */),
+                          createElementVNode("view", utsMapOf({ class: "product-bottom" }), [
+                            createElementVNode("view", utsMapOf({ class: "price-box" }), [
+                              createElementVNode("text", utsMapOf({ class: "currency" }), "¥"),
+                              createElementVNode("text", utsMapOf({ class: "price" }), toDisplayString(product.price), 1 /* TEXT */),
+                              isTrue(product.originPrice)
+                                ? createElementVNode("text", utsMapOf({
+                                    key: 0,
+                                    class: "origin-price"
+                                  }), "¥" + toDisplayString(product.originPrice), 1 /* TEXT */)
+                                : createCommentVNode("v-if", true)
+                            ]),
+                            createElementVNode("view", utsMapOf({
+                              class: "add-btn",
+                              onClick: withModifiers(() => {_ctx.addToCart(product)}, ["stop"])
+                            }), [
+                              createElementVNode("text", utsMapOf({ class: "add-btn__icon" }), "+")
+                            ], 8 /* PROPS */, ["onClick"])
+                          ])
+                        ])
+                      ], 8 /* PROPS */, ["onClick"])
+                    }), 128 /* KEYED_FRAGMENT */)
+                  ]),
+                  createElementVNode("view", utsMapOf({ class: "waterfall-col waterfall-col-gap" }), [
+                    createElementVNode(Fragment, null, RenderHelpers.renderList(_ctx.rightColumnProducts, (product, __key, __index, _cached): any => {
+                      return createElementVNode("view", utsMapOf({
+                        class: "product-card",
+                        key: product.id,
+                        onClick: () => {_ctx.goToProduct(product.id)}
+                      }), [
+                        createElementVNode("view", utsMapOf({ class: "product-img-box" }), [
+                          createElementVNode("image", utsMapOf({
+                            class: "product-img",
+                            src: product.image,
+                            mode: "widthFix"
+                          }), null, 8 /* PROPS */, ["src"]),
+                          isTrue(product.tag)
+                            ? createElementVNode("view", utsMapOf({
+                                key: 0,
+                                class: "product-tag"
+                              }), [
+                                createElementVNode("text", utsMapOf({ class: "product-tag__text" }), toDisplayString(product.tag), 1 /* TEXT */)
+                              ])
+                            : createCommentVNode("v-if", true)
+                        ]),
+                        createElementVNode("view", utsMapOf({ class: "product-info" }), [
+                          createElementVNode("text", utsMapOf({ class: "product-name" }), toDisplayString(product.name), 1 /* TEXT */),
+                          createElementVNode("text", utsMapOf({ class: "product-desc" }), toDisplayString(product.desc), 1 /* TEXT */),
+                          createElementVNode("view", utsMapOf({ class: "product-bottom" }), [
+                            createElementVNode("view", utsMapOf({ class: "price-box" }), [
+                              createElementVNode("text", utsMapOf({ class: "currency" }), "¥"),
+                              createElementVNode("text", utsMapOf({ class: "price" }), toDisplayString(product.price), 1 /* TEXT */),
+                              isTrue(product.originPrice)
+                                ? createElementVNode("text", utsMapOf({
+                                    key: 0,
+                                    class: "origin-price"
+                                  }), "¥" + toDisplayString(product.originPrice), 1 /* TEXT */)
+                                : createCommentVNode("v-if", true)
+                            ]),
+                            createElementVNode("view", utsMapOf({
+                              class: "add-btn",
+                              onClick: withModifiers(() => {_ctx.addToCart(product)}, ["stop"])
+                            }), [
+                              createElementVNode("text", utsMapOf({ class: "add-btn__icon" }), "+")
+                            ], 8 /* PROPS */, ["onClick"])
+                          ])
+                        ])
+                      ], 8 /* PROPS */, ["onClick"])
+                    }), 128 /* KEYED_FRAGMENT */)
+                  ])
+                ])
+              ])
+            ])
+          ]),
+          createVNode(_component_BottomNav)
+        ], 64 /* STABLE_FRAGMENT */)
+  ])
+}
+const GenPagesIndexIndexStyles = [utsMapOf([["page", padStyleMapOf(utsMapOf([["backgroundColor", "#f5f5f5"], ["display", "flex"], ["flexDirection", "column"], ["position", "relative"], ["width", "100%"], ["height", "100%"]]))], ["bg-decoration", padStyleMapOf(utsMapOf([["position", "absolute"], ["top", 0], ["left", 0], ["width", "100%"], ["height", "400rpx"], ["backgroundImage", "linear-gradient(180deg, #0066CC 0%, #0066CC 40%, #f7f8fa 100%)"], ["backgroundColor", "rgba(0,0,0,0)"], ["zIndex", 0]]))], ["header", padStyleMapOf(utsMapOf([["position", "fixed"], ["top", 0], ["left", 0], ["right", 0], ["zIndex", 100], ["paddingTop", CSS_VAR_STATUS_BAR_HEIGHT], ["backgroundColor", "#0066CC"]]))], ["header-content", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["paddingTop", 10], ["paddingRight", 16], ["paddingBottom", 10], ["paddingLeft", 16]]))], ["location-box", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["maxWidth", 100]]))], ["location-icon", utsMapOf([[".location-box ", utsMapOf([["fontSize", 16], ["marginRight", 4]])]])], ["location-text", utsMapOf([[".location-box ", utsMapOf([["fontSize", 14], ["color", "#ffffff"], ["fontWeight", "700"], ["overflow", "hidden"], ["textOverflow", "ellipsis"], ["whiteSpace", "nowrap"]])]])], ["arrow-icon", utsMapOf([[".location-box ", utsMapOf([["fontSize", 12], ["color", "#ffffff"], ["marginLeft", 2]])]])], ["search-bar", padStyleMapOf(utsMapOf([["flex", 1], ["height", 36], ["backgroundColor", "#ffffff"], ["borderTopLeftRadius", 18], ["borderTopRightRadius", 18], ["borderBottomRightRadius", 18], ["borderBottomLeftRadius", 18], ["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["paddingTop", 0], ["paddingRight", 12], ["paddingBottom", 0], ["paddingLeft", 12], ["boxShadow", "0 2px 8px rgba(0, 0, 0, 0.05)"]]))], ["search-icon", utsMapOf([[".search-bar ", utsMapOf([["fontSize", 16], ["color", "#999999"], ["marginRight", 8]])]])], ["search-placeholder", utsMapOf([[".search-bar ", utsMapOf([["fontSize", 13], ["color", "#999999"]])]])], ["content-scroll", padStyleMapOf(utsMapOf([["flex", 1], ["backgroundColor", "rgba(0,0,0,0)"], ["height", 0]]))], ["scroll-content", padStyleMapOf(utsMapOf([["paddingTop", CSS_VAR_STATUS_BAR_HEIGHT], ["marginTop", 56], ["backgroundColor", "#f5f5f5"], ["paddingBottom", "120rpx"]]))], ["swiper-section", padStyleMapOf(utsMapOf([["paddingTop", 10], ["paddingRight", 16], ["paddingBottom", 10], ["paddingLeft", 16], ["position", "relative"], ["zIndex", 1]]))], ["main-swiper", padStyleMapOf(utsMapOf([["height", 150], ["borderTopLeftRadius", 12], ["borderTopRightRadius", 12], ["borderBottomRightRadius", 12], ["borderBottomLeftRadius", 12], ["overflow", "hidden"], ["boxShadow", "0 4px 12px rgba(0, 0, 0, 0.1)"]]))], ["swiper-image", padStyleMapOf(utsMapOf([["width", "100%"], ["height", "100%"]]))], ["service-bar", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"], ["paddingTop", 0], ["paddingRight", 24], ["paddingBottom", 12], ["paddingLeft", 24]]))], ["service-item", utsMapOf([[".service-bar ", utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"]])]])], ["service-icon", utsMapOf([[".service-bar .service-item ", utsMapOf([["fontSize", 12], ["color", "rgba(255,255,255,0.9)"], ["marginRight", 4], ["backgroundColor", "rgba(255,255,255,0.2)"], ["width", 16], ["height", 16], ["borderTopLeftRadius", 999], ["borderTopRightRadius", 999], ["borderBottomRightRadius", 999], ["borderBottomLeftRadius", 999], ["textAlign", "center"], ["lineHeight", "16px"]])]])], ["service-text", utsMapOf([[".service-bar .service-item ", utsMapOf([["fontSize", 11], ["color", "rgba(255,255,255,0.9)"]])]])], ["category-section", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["borderTopLeftRadius", 16], ["borderTopRightRadius", 16], ["borderBottomRightRadius", 0], ["borderBottomLeftRadius", 0], ["paddingTop", 20], ["paddingRight", 0], ["paddingBottom", 20], ["paddingLeft", 0], ["marginTop", -10], ["position", "relative"], ["zIndex", 2]]))], ["category-grid", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["flexWrap", "wrap"], ["paddingTop", 0], ["paddingRight", 10], ["paddingBottom", 0], ["paddingLeft", 10]]))], ["category-item", padStyleMapOf(utsMapOf([["width", "25%"], ["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"], ["marginBottom", 16]]))], ["category-icon-box", utsMapOf([[".category-item ", utsMapOf([["width", 48], ["height", 48], ["borderTopLeftRadius", 16], ["borderTopRightRadius", 16], ["borderBottomRightRadius", 16], ["borderBottomLeftRadius", 16], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"], ["marginBottom", 8]])]])], ["category-emoji", utsMapOf([[".category-item .category-icon-box ", utsMapOf([["fontSize", 24]])]])], ["category-name", utsMapOf([[".category-item ", utsMapOf([["fontSize", 12], ["color", "#333333"], ["fontWeight", "400"]])]])], ["activity-section", padStyleMapOf(utsMapOf([["paddingTop", 0], ["paddingRight", 16], ["paddingBottom", 16], ["paddingLeft", 16], ["display", "flex"], ["flexDirection", "row"], ["backgroundColor", "rgba(0,0,0,0)"], ["marginBottom", 8]]))], ["activity-col-spaced", padStyleMapOf(utsMapOf([["marginLeft", 12]]))], ["activity-card", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["borderTopLeftRadius", 16], ["borderTopRightRadius", 16], ["borderBottomRightRadius", 16], ["borderBottomLeftRadius", 16], ["paddingTop", 16], ["paddingRight", 16], ["paddingBottom", 16], ["paddingLeft", 16], ["position", "relative"], ["overflow", "hidden"], ["boxShadow", "0 4px 16px rgba(0, 0, 0, 0.04)"]]))], ["activity-card-big", padStyleMapOf(utsMapOf([["flex", 1], ["height", 170], ["backgroundColor", "#e6f4ff"]]))], ["activity-card-big-img", padStyleMapOf(utsMapOf([["position", "absolute"], ["bottom", 0], ["right", -10], ["width", 110], ["height", 110]]))], ["activity-card-small", padStyleMapOf(utsMapOf([["height", 79], ["backgroundColor", "#fff7e6"], ["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"]]))], ["activity-card-small-img", padStyleMapOf(utsMapOf([["width", 60], ["height", 60], ["marginTop", 5]]))], ["activity-col", padStyleMapOf(utsMapOf([["flex", 1], ["display", "flex"], ["flexDirection", "column"]]))], ["activity-card-spaced", padStyleMapOf(utsMapOf([["marginTop", 12]]))], ["activity-info", padStyleMapOf(utsMapOf([["position", "relative"], ["zIndex", 1], ["display", "flex"], ["flexDirection", "column"], ["alignItems", "flex-start"]]))], ["activity-title", padStyleMapOf(utsMapOf([["fontSize", 16], ["fontWeight", "bold"], ["color", "#333333"], ["marginBottom", 4]]))], ["activity-title-highlight", padStyleMapOf(utsMapOf([["color", "#ff4d4f"]]))], ["activity-desc", padStyleMapOf(utsMapOf([["fontSize", 11], ["color", "#666666"], ["marginBottom", 8]]))], ["activity-btn", padStyleMapOf(utsMapOf([["fontSize", 10], ["color", "#ffffff"], ["backgroundColor", "#ff4d4f"], ["paddingTop", 2], ["paddingRight", 8], ["paddingBottom", 2], ["paddingLeft", 8], ["borderTopLeftRadius", 10], ["borderTopRightRadius", 10], ["borderBottomRightRadius", 10], ["borderBottomLeftRadius", 10]]))], ["recommend-section", padStyleMapOf(utsMapOf([["paddingTop", 0], ["paddingRight", 16], ["paddingBottom", 0], ["paddingLeft", 16]]))], ["section-header", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"], ["alignItems", "center"], ["marginBottom", 12]]))], ["section-title", padStyleMapOf(utsMapOf([["fontSize", 18], ["fontWeight", "bold"], ["color", "#333333"], ["paddingLeft", 10], ["borderLeftWidth", 4], ["borderLeftStyle", "solid"], ["borderLeftColor", "#0066CC"], ["borderTopLeftRadius", 2], ["borderTopRightRadius", 2], ["borderBottomRightRadius", 2], ["borderBottomLeftRadius", 2]]))], ["section-more", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"]]))], ["section-more__text", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"]]))], ["section-more__arrow", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"], ["marginLeft", 2]]))], ["product-waterfall", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"]]))], ["waterfall-col", padStyleMapOf(utsMapOf([["flex", 1], ["display", "flex"], ["flexDirection", "column"]]))], ["waterfall-col-gap", padStyleMapOf(utsMapOf([["marginLeft", 12]]))], ["product-card-gap", padStyleMapOf(utsMapOf([["marginTop", 12]]))], ["product-card", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["borderTopLeftRadius", 16], ["borderTopRightRadius", 16], ["borderBottomRightRadius", 16], ["borderBottomLeftRadius", 16], ["overflow", "hidden"], ["boxShadow", "0 4px 16px rgba(0, 0, 0, 0.04)"]]))], ["product-img-box", padStyleMapOf(utsMapOf([["position", "relative"], ["width", "100%"]]))], ["product-img", padStyleMapOf(utsMapOf([["width", "100%"], ["height", "100%"]]))], ["product-tag", padStyleMapOf(utsMapOf([["position", "absolute"], ["top", 10], ["left", 10], ["backgroundColor", "#ff4d4f"], ["paddingTop", 4], ["paddingRight", 8], ["paddingBottom", 4], ["paddingLeft", 8], ["borderTopLeftRadius", 8], ["borderTopRightRadius", 0], ["borderBottomRightRadius", 8], ["borderBottomLeftRadius", 0], ["boxShadow", "0 2px 4px rgba(255, 77, 79, 0.3)"]]))], ["product-tag__text", padStyleMapOf(utsMapOf([["fontSize", 11], ["fontWeight", "bold"], ["color", "#ffffff"]]))], ["product-info", padStyleMapOf(utsMapOf([["paddingTop", 12], ["paddingRight", 12], ["paddingBottom", 12], ["paddingLeft", 12]]))], ["product-name", padStyleMapOf(utsMapOf([["fontSize", 15], ["color", "#333333"], ["lineHeight", 1.4], ["marginBottom", 6], ["overflow", "hidden"], ["fontWeight", "bold"]]))], ["product-desc", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"], ["marginBottom", 12], ["whiteSpace", "nowrap"], ["overflow", "hidden"], ["textOverflow", "ellipsis"]]))], ["product-bottom", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"], ["alignItems", "flex-end"]]))], ["price-box", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"]]))], ["currency", padStyleMapOf(utsMapOf([["fontSize", 12], ["fontWeight", "bold"], ["color", "#ff4d4f"]]))], ["price", padStyleMapOf(utsMapOf([["fontSize", 18], ["fontWeight", "bold"], ["color", "#ff4d4f"]]))], ["origin-price", padStyleMapOf(utsMapOf([["fontSize", 11], ["color", "#cccccc"], ["marginLeft", 4], ["opacity", 0.8]]))], ["add-btn", padStyleMapOf(utsMapOf([["width", 24], ["height", 24], ["backgroundColor", "#0066CC"], ["borderTopLeftRadius", 999], ["borderTopRightRadius", 999], ["borderBottomRightRadius", 999], ["borderBottomLeftRadius", 999], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"], ["boxShadow", "0 2px 6px rgba(0, 102, 204, 0.3)"]]))], ["add-btn__icon", padStyleMapOf(utsMapOf([["fontSize", 18], ["fontWeight", "400"], ["color", "#ffffff"]]))], ["auth-loading", padStyleMapOf(utsMapOf([["position", "fixed"], ["top", 0], ["left", 0], ["right", 0], ["bottom", 0], ["backgroundColor", "#0066CC"], ["zIndex", 999]]))], ["loading-bg", padStyleMapOf(utsMapOf([["width", "100%"], ["height", "100%"], ["backgroundColor", "#0066CC"]]))]])]

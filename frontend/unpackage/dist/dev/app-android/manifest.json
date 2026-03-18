@@ -1,0 +1,30 @@
+{
+  "id": "__UNI__BY001",
+  "name": "by",
+  "description": "鲜农优选 - 县域特色农产品电商平台",
+  "version": {
+    "name": "1.0.0",
+    "code": "100"
+  },
+  "uni-app-x": {
+    "compilerVersion": "4.66"
+  },
+  "app": {
+    "distribute": {
+      "icons": {
+        "android": {
+          "hdpi": "",
+          "xhdpi": "",
+          "xxhdpi": "",
+          "xxxhdpi": ""
+        }
+      },
+      "android": {
+        "permissions": [
+          "<uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\"/>",
+          "<uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>"
+        ]
+      }
+    }
+  }
+}

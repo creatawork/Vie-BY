@@ -1,0 +1,333 @@
+
+import { getAddressDetail, addAddress, updateAddress, type AddressData } from '@/api/address'
+	import { type PCAItem } from '@/utils/pca-data.uts'
+
+type AddressForm = { __$originalPosition?: UTSSourceMapPosition<"AddressForm", "pages/user/address-edit.uvue", 79, 6>;
+	receiverName : string
+	receiverPhone : string
+	province : string
+	city : string
+	district : string
+	detailAddress : string
+	isDefault : number
+}
+
+const __sfc__ = defineComponent({
+	data() {
+		return {
+			isEdit: false,
+			addressId: 0,
+			isLoading: false,
+			fullPcaData: [] as PCAItem[],
+			form: {
+				receiverName: '',
+				receiverPhone: '',
+				province: '',
+				city: '',
+				district: '',
+				detailAddress: '',
+				isDefault: 0
+			} as AddressForm
+		}
+	},
+	onReady() {
+	},
+	onLoad(options : any) {
+		const opts = options as UTSJSONObject
+		const mode = opts.getString('mode')
+
+		// 加载城市数据
+		this.loadPcaData()
+
+		if (mode == 'edit') {
+			this.isEdit = true
+			const id = opts.getNumber('id')
+			if (id != null) {
+				this.addressId = id.toInt()
+				this.loadAddress(this.addressId)
+			}
+		}
+
+		// 设置原生导航栏标题
+		uni.setNavigationBarTitle({
+			title: this.isEdit ? '编辑地址' : '新增地址'
+		})
+	},
+	methods: {
+		loadPcaData() : Promise<void> {
+			return new Promise((resolve, reject) => {
+				if (this.fullPcaData.length > 0) {
+					resolve()
+					return
+				}
+				// 显示加载中，因为 JSON 文件较大
+				uni.showLoading({ title: '加载城市数据...', mask: true })
+
+				uni.getFileSystemManager().readFile({
+					filePath: '/static/pca-code.json',
+					encoding: 'utf-8',
+					success: (res) => {
+						try {
+							const text = res.data as string
+							const arr = UTSAndroid.consoleDebugError(JSON.parse(text), " at pages/user/address-edit.uvue:146") as Array<UTSJSONObject>
+							this.fullPcaData = arr.map((p) : PCAItem => {
+								const pName = p.getString('name') ?? ''
+								const pCode = p.getString('code') ?? ''
+								const pChildrenAny = p.getAny('children')
+								const pChildren = (pChildrenAny != null) ? (pChildrenAny as Array<UTSJSONObject>) : []
+								const cities = pChildren.map((c) : PCAItem => {
+									const cName = c.getString('name') ?? ''
+									const cCode = c.getString('code') ?? ''
+									const cChildrenAny = c.getAny('children')
+									const cChildren = (cChildrenAny != null) ? (cChildrenAny as Array<UTSJSONObject>) : []
+									const districts = cChildren.map((d) : PCAItem => {
+										return { name: d.getString('name') ?? '', code: d.getString('code') ?? '', children: [] as PCAItem[] } as PCAItem
+									})
+									return { name: cName, code: cCode, children: districts } as PCAItem
+								})
+								return { name: pName, code: pCode, children: cities } as PCAItem
+							})
+							uni.hideLoading()
+							resolve()
+						} catch (e) {
+							uni.hideLoading()
+							reject(e)
+						}
+					},
+					fail: (err) => {
+						uni.hideLoading()
+						reject(err)
+					}
+				})
+			})
+		},
+		loadAddress(id : number) {
+			getAddressDetail(id).then((result) => {
+				if (result.code === 200) {
+					const data = result.data as UTSJSONObject
+					if (data != null) {
+						this.form = {
+							receiverName: data.getString('receiverName') ?? '',
+							receiverPhone: data.getString('receiverPhone') ?? '',
+							province: data.getString('province') ?? '',
+							city: data.getString('city') ?? '',
+							district: data.getString('district') ?? '',
+							detailAddress: data.getString('detailAddress') ?? '',
+							isDefault: data.getNumber('isDefault')?.toInt() ?? 0
+						} as AddressForm
+					}
+				} else {
+					uni.showToast({ title: result.message, icon: 'none' })
+				}
+			}).catch((error) => {
+				console.error('加载地址详情失败:', error, " at pages/user/address-edit.uvue:197")
+				uni.showToast({ title: '加载失败', icon: 'none' })
+			})
+		},
+		hasRegion() : boolean {
+			return this.form.province != '' && this.form.city != '' && this.form.district != ''
+		},
+		getRegionText() : string {
+			if (this.hasRegion()) {
+				return this.form.province + ' ' + this.form.city + ' ' + this.form.district
+			}
+			return '请选择省/市/区'
+		},
+		showRegionPicker() {
+			if (this.fullPcaData.length == 0) {
+				this.loadPcaData().then(() => {
+					this.startPickRegion()
+				}).catch((err) => {
+					uni.showToast({ title: '加载城市数据失败', icon: 'none' })
+				})
+			} else {
+				this.startPickRegion()
+			}
+		},
+		startPickRegion() {
+			const provinces = this.fullPcaData.map((item : PCAItem) : string => item.name)
+			uni.showActionSheet({
+				title: '选择省份',
+				itemList: provinces,
+				success: (res) => {
+					const pIndex = res.tapIndex
+					const province = this.fullPcaData[pIndex]
+					const cities = province.children.map((item : PCAItem) : string => item.name)
+
+					uni.showActionSheet({
+						title: '选择城市',
+						itemList: cities,
+						success: (res2) => {
+							const cIndex = res2.tapIndex
+							const city = province.children[cIndex]
+							const districts = city.children.map((item : PCAItem) : string => item.name)
+
+							uni.showActionSheet({
+								title: '选择区县',
+								itemList: districts,
+								success: (res3) => {
+									const dIndex = res3.tapIndex
+									const district = city.children[dIndex]
+
+									this.form.province = province.name
+									this.form.city = city.name
+									this.form.district = district.name
+								}
+							})
+						}
+					})
+				}
+			})
+		},
+		goBack() {
+			uni.navigateBack()
+		},
+		saveAddress() {
+			// 验证
+			if (this.form.receiverName.trim() == '') {
+				uni.showToast({ title: '请输入收货人', icon: 'none' })
+				return
+			}
+			if (this.form.receiverPhone.trim() == '' || this.form.receiverPhone.length != 11) {
+				uni.showToast({ title: '请输入正确手机号', icon: 'none' })
+				return
+			}
+			if (!this.hasRegion()) {
+				uni.showToast({ title: '请选择所在地区', icon: 'none' })
+				return
+			}
+			if (this.form.detailAddress.trim() == '') {
+				uni.showToast({ title: '请输入详细地址', icon: 'none' })
+				return
+			}
+
+			if (this.isLoading) return
+			this.isLoading = true
+
+			// 准备数据，使用 UTSJSONObject 避免 Android 端的类型转换错误
+			const data : UTSJSONObject = {__$originalPosition: new UTSSourceMapPosition("data", "pages/user/address-edit.uvue", 282, 10),
+				"receiverName": this.form.receiverName,
+				"receiverPhone": this.form.receiverPhone,
+				"province": this.form.province,
+				"city": this.form.city,
+				"district": this.form.district,
+				"detailAddress": this.form.detailAddress,
+				"isDefault": this.form.isDefault
+			}
+
+			// 调用API
+			const apiCall = this.isEdit ? updateAddress(this.addressId, data) : addAddress(data)
+
+			apiCall.then((result) => {
+				if (result.code === 200) {
+					uni.showToast({ title: '保存成功', icon: 'success' })
+					setTimeout(() => {
+						uni.navigateBack()
+					}, 1000)
+				} else {
+					uni.showToast({ title: result.message, icon: 'none' })
+				}
+			}).catch((error) => {
+				console.error('保存地址失败:', error, " at pages/user/address-edit.uvue:305")
+				uni.showToast({ title: '保存失败，请重试', icon: 'none' })
+			}).finally(() => {
+				this.isLoading = false
+			})
+		}
+	}
+})
+
+export default __sfc__
+function GenPagesUserAddressEditRender(this: InstanceType<typeof __sfc__>): any | null {
+const _ctx = this
+const _cache = this.$.renderCache
+  return createElementVNode("view", utsMapOf({ class: "page" }), [
+    createElementVNode("scroll-view", utsMapOf({
+      class: "form-scroll",
+      "scroll-y": "true",
+      "show-scrollbar": false
+    }), [
+      createElementVNode("view", utsMapOf({ class: "form-content" }), [
+        createElementVNode("view", utsMapOf({ class: "form-section" }), [
+          createElementVNode("text", utsMapOf({ class: "section-label" }), [
+            "收货人 ",
+            createElementVNode("text", utsMapOf({ class: "required" }), "*")
+          ]),
+          createElementVNode("input", utsMapOf({
+            class: "form-input",
+            modelValue: _ctx.form.receiverName,
+            onInput: ($event: InputEvent) => {(_ctx.form.receiverName) = $event.detail.value},
+            placeholder: "请输入收货人姓名",
+            "placeholder-class": "placeholder"
+          }), null, 40 /* PROPS, NEED_HYDRATION */, ["modelValue", "onInput"])
+        ]),
+        createElementVNode("view", utsMapOf({ class: "form-section" }), [
+          createElementVNode("text", utsMapOf({ class: "section-label" }), [
+            "手机号 ",
+            createElementVNode("text", utsMapOf({ class: "required" }), "*")
+          ]),
+          createElementVNode("input", utsMapOf({
+            class: "form-input",
+            modelValue: _ctx.form.receiverPhone,
+            onInput: ($event: InputEvent) => {(_ctx.form.receiverPhone) = $event.detail.value},
+            type: "number",
+            placeholder: "请输入11位手机号",
+            "placeholder-class": "placeholder",
+            maxlength: "11"
+          }), null, 40 /* PROPS, NEED_HYDRATION */, ["modelValue", "onInput"])
+        ]),
+        createElementVNode("view", utsMapOf({ class: "form-section" }), [
+          createElementVNode("text", utsMapOf({ class: "section-label" }), [
+            "所在地区 ",
+            createElementVNode("text", utsMapOf({ class: "required" }), "*")
+          ]),
+          createElementVNode("view", utsMapOf({
+            class: "region-picker",
+            onClick: _ctx.showRegionPicker
+          }), [
+            createElementVNode("text", utsMapOf({
+              class: normalizeClass(["region-text", utsMapOf({ 'region-text-placeholder': !_ctx.hasRegion() })])
+            }), toDisplayString(_ctx.getRegionText()), 3 /* TEXT, CLASS */),
+            createElementVNode("text", utsMapOf({ class: "region-arrow" }), "›")
+          ], 8 /* PROPS */, ["onClick"])
+        ]),
+        createElementVNode("view", utsMapOf({ class: "form-section" }), [
+          createElementVNode("text", utsMapOf({ class: "section-label" }), [
+            "详细地址 ",
+            createElementVNode("text", utsMapOf({ class: "required" }), "*")
+          ]),
+          createElementVNode("textarea", utsMapOf({
+            class: "form-textarea",
+            modelValue: _ctx.form.detailAddress,
+            onInput: ($event: InputEvent) => {(_ctx.form.detailAddress) = $event.detail.value},
+            placeholder: "请输入街道、楼栋、门牌号等",
+            "placeholder-class": "placeholder",
+            maxlength: "200"
+          }), null, 40 /* PROPS, NEED_HYDRATION */, ["modelValue", "onInput"]),
+          createElementVNode("text", utsMapOf({ class: "char-count" }), toDisplayString(_ctx.form.detailAddress.length) + "/200", 1 /* TEXT */)
+        ]),
+        createElementVNode("view", utsMapOf({
+          class: "default-row",
+          onClick: () => {_ctx.form.isDefault = _ctx.form.isDefault === 1 ? 0 : 1}
+        }), [
+          createElementVNode("text", utsMapOf({ class: "default-label" }), "设为默认地址"),
+          createElementVNode("view", utsMapOf({
+            class: normalizeClass(["switch-box", utsMapOf({ 'switch-box-active': _ctx.form.isDefault === 1 })])
+          }), [
+            createElementVNode("view", utsMapOf({ class: "switch-dot" }))
+          ], 2 /* CLASS */)
+        ], 8 /* PROPS */, ["onClick"])
+      ]),
+      createElementVNode("view", utsMapOf({ class: "form-space" }))
+    ]),
+    createElementVNode("view", utsMapOf({ class: "footer-box" }), [
+      createElementVNode("view", utsMapOf({
+        class: "save-btn",
+        onClick: _ctx.saveAddress
+      }), [
+        createElementVNode("text", utsMapOf({ class: "save-btn-text" }), "保存地址")
+      ], 8 /* PROPS */, ["onClick"])
+    ])
+  ])
+}
+const GenPagesUserAddressEditStyles = [utsMapOf([["page", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "column"], ["backgroundColor", "#F5F7FA"], ["height", "100%"]]))], ["form-scroll", padStyleMapOf(utsMapOf([["flex", 1]]))], ["form-content", padStyleMapOf(utsMapOf([["paddingTop", "24rpx"], ["paddingRight", "24rpx"], ["paddingBottom", "24rpx"], ["paddingLeft", "24rpx"]]))], ["form-section", padStyleMapOf(utsMapOf([["backgroundColor", "#FFFFFF"], ["borderTopLeftRadius", "16rpx"], ["borderTopRightRadius", "16rpx"], ["borderBottomRightRadius", "16rpx"], ["borderBottomLeftRadius", "16rpx"], ["paddingTop", "28rpx"], ["paddingRight", "28rpx"], ["paddingBottom", "28rpx"], ["paddingLeft", "28rpx"], ["marginBottom", "24rpx"]]))], ["section-label", padStyleMapOf(utsMapOf([["fontSize", "28rpx"], ["color", "#1A1A1A"], ["fontWeight", "700"], ["marginBottom", "20rpx"]]))], ["required", padStyleMapOf(utsMapOf([["color", "#FF4D4F"]]))], ["tag-list", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["flexWrap", "wrap"]]))], ["tag-item", padStyleMapOf(utsMapOf([["paddingTop", "16rpx"], ["paddingRight", "32rpx"], ["paddingBottom", "16rpx"], ["paddingLeft", "32rpx"], ["backgroundColor", "#F5F7FA"], ["borderTopLeftRadius", "8rpx"], ["borderTopRightRadius", "8rpx"], ["borderBottomRightRadius", "8rpx"], ["borderBottomLeftRadius", "8rpx"], ["marginRight", "20rpx"], ["marginBottom", "16rpx"], ["borderTopWidth", "2rpx"], ["borderRightWidth", "2rpx"], ["borderBottomWidth", "2rpx"], ["borderLeftWidth", "2rpx"], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "rgba(0,0,0,0)"], ["borderRightColor", "rgba(0,0,0,0)"], ["borderBottomColor", "rgba(0,0,0,0)"], ["borderLeftColor", "rgba(0,0,0,0)"]]))], ["tag-item-active", padStyleMapOf(utsMapOf([["backgroundColor", "#E8F4FF"], ["borderTopColor", "#0066CC"], ["borderRightColor", "#0066CC"], ["borderBottomColor", "#0066CC"], ["borderLeftColor", "#0066CC"]]))], ["tag-text", padStyleMapOf(utsMapOf([["fontSize", "26rpx"], ["color", "#666666"]]))], ["tag-text-active", padStyleMapOf(utsMapOf([["color", "#0066CC"]]))], ["form-input", padStyleMapOf(utsMapOf([["height", "88rpx"], ["backgroundColor", "#F5F7FA"], ["borderTopLeftRadius", "12rpx"], ["borderTopRightRadius", "12rpx"], ["borderBottomRightRadius", "12rpx"], ["borderBottomLeftRadius", "12rpx"], ["paddingTop", 0], ["paddingRight", "24rpx"], ["paddingBottom", 0], ["paddingLeft", "24rpx"], ["fontSize", "28rpx"], ["color", "#1A1A1A"]]))], ["placeholder", padStyleMapOf(utsMapOf([["color", "#CCCCCC"]]))], ["region-picker", padStyleMapOf(utsMapOf([["height", "88rpx"], ["backgroundColor", "#F5F7FA"], ["borderTopLeftRadius", "12rpx"], ["borderTopRightRadius", "12rpx"], ["borderBottomRightRadius", "12rpx"], ["borderBottomLeftRadius", "12rpx"], ["paddingTop", 0], ["paddingRight", "24rpx"], ["paddingBottom", 0], ["paddingLeft", "24rpx"], ["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["justifyContent", "space-between"]]))], ["region-text", padStyleMapOf(utsMapOf([["fontSize", "28rpx"], ["color", "#1A1A1A"]]))], ["region-text-placeholder", padStyleMapOf(utsMapOf([["color", "#CCCCCC"]]))], ["region-arrow", padStyleMapOf(utsMapOf([["fontSize", "32rpx"], ["color", "#CCCCCC"]]))], ["form-textarea", padStyleMapOf(utsMapOf([["width", "100%"], ["height", "180rpx"], ["backgroundColor", "#F5F7FA"], ["borderTopLeftRadius", "12rpx"], ["borderTopRightRadius", "12rpx"], ["borderBottomRightRadius", "12rpx"], ["borderBottomLeftRadius", "12rpx"], ["paddingTop", "24rpx"], ["paddingRight", "24rpx"], ["paddingBottom", "24rpx"], ["paddingLeft", "24rpx"], ["fontSize", "28rpx"], ["color", "#1A1A1A"]]))], ["char-count", padStyleMapOf(utsMapOf([["fontSize", "24rpx"], ["color", "#CCCCCC"], ["textAlign", "right"], ["marginTop", "12rpx"]]))], ["default-row", padStyleMapOf(utsMapOf([["backgroundColor", "#FFFFFF"], ["borderTopLeftRadius", "16rpx"], ["borderTopRightRadius", "16rpx"], ["borderBottomRightRadius", "16rpx"], ["borderBottomLeftRadius", "16rpx"], ["paddingTop", "28rpx"], ["paddingRight", "28rpx"], ["paddingBottom", "28rpx"], ["paddingLeft", "28rpx"], ["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["justifyContent", "space-between"]]))], ["default-label", padStyleMapOf(utsMapOf([["fontSize", "28rpx"], ["color", "#1A1A1A"]]))], ["switch-box", padStyleMapOf(utsMapOf([["width", "96rpx"], ["height", "52rpx"], ["backgroundColor", "#E0E0E0"], ["borderTopLeftRadius", "26rpx"], ["borderTopRightRadius", "26rpx"], ["borderBottomRightRadius", "26rpx"], ["borderBottomLeftRadius", "26rpx"], ["paddingTop", "4rpx"], ["paddingRight", "4rpx"], ["paddingBottom", "4rpx"], ["paddingLeft", "4rpx"], ["display", "flex"], ["alignItems", "center"]]))], ["switch-box-active", padStyleMapOf(utsMapOf([["backgroundColor", "#0066CC"], ["justifyContent", "flex-end"]]))], ["switch-dot", padStyleMapOf(utsMapOf([["width", "44rpx"], ["height", "44rpx"], ["backgroundColor", "#FFFFFF"], ["borderTopLeftRadius", "22rpx"], ["borderTopRightRadius", "22rpx"], ["borderBottomRightRadius", "22rpx"], ["borderBottomLeftRadius", "22rpx"]]))], ["form-space", padStyleMapOf(utsMapOf([["height", "180rpx"]]))], ["footer-box", padStyleMapOf(utsMapOf([["position", "fixed"], ["bottom", 0], ["left", 0], ["right", 0], ["paddingTop", "24rpx"], ["paddingRight", "32rpx"], ["paddingBottom", "48rpx"], ["paddingLeft", "32rpx"], ["backgroundColor", "#FFFFFF"]]))], ["save-btn", padStyleMapOf(utsMapOf([["height", "96rpx"], ["backgroundColor", "#0066CC"], ["borderTopLeftRadius", "48rpx"], ["borderTopRightRadius", "48rpx"], ["borderBottomRightRadius", "48rpx"], ["borderBottomLeftRadius", "48rpx"], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["save-btn-text", padStyleMapOf(utsMapOf([["fontSize", "32rpx"], ["color", "#FFFFFF"], ["fontWeight", "700"]]))]])]

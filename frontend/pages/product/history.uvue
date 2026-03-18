@@ -1,0 +1,493 @@
+<template>
+  <view class="history-page">
+    <!-- 顶部操作栏 -->
+    <view class="action-bar" v-if="historyList.length > 0">
+      <text class="count-text">共 {{ total }} 条记录</text>
+      <text class="clear-btn" @click="clearHistory">清空</text>
+    </view>
+
+    <!-- 列表区域 -->
+    <scroll-view
+      class="history-scroll"
+      scroll-y="true"
+      :show-scrollbar="false"
+      @scrolltolower="loadMore"
+    >
+      <view class="history-list">
+        <view class="history-item" v-for="item in historyList" :key="item.id" @click="goToDetail(item.productId)">
+          <image class="goods-img" :src="item.mainImage" mode="aspectFill"></image>
+          <view class="goods-info">
+            <view class="info-top">
+                <text class="goods-name">{{ item.productName }}</text>
+                <text class="view-time">{{ formatTime(item.browseTime) }}</text>
+            </view>
+            <text class="goods-desc">{{ getStockText(item) }}</text>
+            <view class="goods-bottom">
+              <view class="price-box">
+                <text class="currency">¥</text>
+                <text class="price">{{ item.currentPrice }}</text>
+                <text class="original-price" v-if="shouldShowOriginalPrice(item)">¥{{ item.originalPrice }}</text>
+              </view>
+              <view class="action-icon" @click.stop="deleteItem(item.id)">
+                <text class="delete-text">✕</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 加载更多 -->
+      <view v-if="loading" class="loading-more">
+        <text class="loading-text">加载中...</text>
+      </view>
+
+      <!-- 没有更多了 -->
+      <view v-if="!loading && hasMore === false && historyList.length > 0" class="no-more">
+        <text class="no-more-text">没有更多了</text>
+      </view>
+
+      <!-- 空状态 -->
+      <view v-if="!loading && historyList.length === 0" class="empty-state">
+        <text class="empty-icon">🕒</text>
+        <text class="empty-text">暂无浏览记录</text>
+        <button class="go-shopping-btn" @click="goShopping">去逛逛</button>
+      </view>
+
+      <!-- 底部占位 -->
+      <view style="height: 20px;"></view>
+    </scroll-view>
+  </view>
+</template>
+
+<script lang="uts">
+import { getBrowseHistory, deleteBrowseHistory, clearBrowseHistory } from '@/api/browseHistory'
+
+type HistoryItem = {
+  id : number  // 修改：后端返回的是 id，不是 historyId
+  productId : number
+  productName : string
+  mainImage : string
+  currentPrice : number
+  originalPrice : number
+  stock : number
+  salesVolume : number
+  status : number
+  browseTime : string
+  inStock : boolean
+}
+
+export default {
+  data() {
+    return {
+      historyList: [] as HistoryItem[],
+      loading: false,
+      pageNum: 1,
+      pageSize: 10,
+      total: 0,
+      hasMore: true
+    }
+  },
+  onLoad() {
+    this.loadHistoryList()
+  },
+  methods: {
+    // 判断是否显示原价
+    shouldShowOriginalPrice(item : HistoryItem) : boolean {
+      return item.originalPrice > 0 && item.originalPrice > item.currentPrice
+    },
+    // 加载浏览历史列表
+    loadHistoryList() {
+      if (this.loading || !this.hasMore) return
+
+      this.loading = true
+
+      getBrowseHistory(this.pageNum, this.pageSize).then((res) => {
+        if (res.code == 200 && res.data != null) {
+          const resData = res.data as UTSJSONObject
+          const recordsArr = resData.getArray('records')
+          const total = (resData.getNumber('total') ?? 0).toInt()
+          const current = (resData.getNumber('current') ?? 1).toInt()
+          const pages = (resData.getNumber('pages') ?? 1).toInt()
+
+          // 解析记录数组
+          const records : HistoryItem[] = []
+          if (recordsArr != null) {
+            for (let i = 0; i < recordsArr.length; i++) {
+              const item = recordsArr[i] as UTSJSONObject
+              
+              // 后端返回的字段名是 historyId，不是 id
+              const historyId = (item.getNumber('historyId') ?? 0).toInt()
+              
+              records.push({
+                id: historyId,
+                productId: (item.getNumber('productId') ?? 0).toInt(),
+                productName: item.getString('productName') ?? '',
+                mainImage: item.getString('productImage') ?? '',
+                currentPrice: item.getNumber('currentPrice') ?? 0,
+                originalPrice: item.getNumber('originalPrice') ?? 0,
+                stock: (item.getNumber('stock') ?? 0).toInt(),
+                salesVolume: (item.getNumber('salesVolume') ?? 0).toInt(),
+                status: (item.getNumber('productStatus') ?? 1).toInt(),
+                browseTime: item.getString('browseTime') ?? '',
+                inStock: (item.getBoolean('inStock') ?? true)
+              } as HistoryItem)
+            }
+          }
+
+          // 追加数据
+          this.historyList = this.historyList.concat(records)
+          this.total = total
+          this.pageNum = current
+
+          // 判断是否还有更多
+          this.hasMore = this.pageNum < pages
+        } else {
+          const msg = res.message != '' ? res.message : '加载失败'
+          uni.showToast({
+            title: msg,
+            icon: 'none'
+          })
+        }
+        this.loading = false
+      }).catch((error) => {
+        console.error('加载浏览历史失败:', error)
+        uni.showToast({
+          title: '加载失败，请重试',
+          icon: 'none'
+        })
+        this.loading = false
+      })
+    },
+
+    // 加载更多
+    loadMore() {
+      if (!this.hasMore || this.loading) return
+
+      this.pageNum += 1
+      this.loadHistoryList()
+    },
+
+    // 跳转到商品详情
+    goToDetail(productId : number) {
+      uni.navigateTo({ url: `/pages/product/detail?id=${productId}` })
+    },
+
+    // 删除单条记录
+    deleteItem(historyId : number) {
+      console.log('准备删除浏览记录，ID:', historyId)
+      
+      deleteBrowseHistory(historyId).then((res) => {
+        console.log('删除API响应:', JSON.stringify(res))
+        
+        if (res.code == 200) {
+          // 从列表中移除
+          this.historyList = this.historyList.filter((item : HistoryItem) : boolean => item.id !== historyId)
+          this.total -= 1
+
+          uni.showToast({ title: '已删除', icon: 'success' })
+        } else {
+          const msg = res.message != '' ? res.message : '删除失败'
+          console.error('删除失败，响应:', msg)
+          uni.showToast({
+            title: msg,
+            icon: 'none'
+          })
+        }
+      }).catch((error) => {
+        console.error('删除浏览记录异常:', error)
+        uni.showToast({
+          title: '删除失败，请重试',
+          icon: 'none'
+        })
+      })
+    },
+
+    // 清空浏览历史
+    clearHistory() {
+      uni.showModal({
+        title: '提示',
+        content: '确定清空所有浏览记录吗？',
+        success: (modalRes) => {
+          if (modalRes.confirm) {
+            clearBrowseHistory().then((res) => {
+              if (res.code == 200) {
+                this.historyList = []
+                this.total = 0
+                this.pageNum = 1
+                this.hasMore = false
+
+                uni.showToast({ title: '已清空', icon: 'none' })
+              } else {
+                const msg = res.message != '' ? res.message : '清空失败'
+                uni.showToast({
+                  title: msg,
+                  icon: 'none'
+                })
+              }
+            }).catch((error) => {
+              console.error('清空浏览历史失败:', error)
+              uni.showToast({
+                title: '清空失败，请重试',
+                icon: 'none'
+              })
+            })
+          }
+        }
+      })
+    },
+
+    // 去逛逛
+    goShopping() {
+      uni.switchTab({ url: '/pages/product/list' })
+    },
+
+    // 格式化时间
+    formatTime(timeStr : string) : string {
+      if (timeStr == '') return ''
+
+      try {
+        const time = new Date(timeStr.replace(/-/g, '/'))
+        const now = new Date()
+        const diff = now.getTime() - time.getTime()
+
+        const minutes = Math.floor(diff / 60000)
+        const hours = Math.floor(diff / 3600000)
+        const days = Math.floor(diff / 86400000)
+
+        if (minutes < 1) {
+          return '刚刚'
+        } else if (minutes < 60) {
+          return `${minutes}分钟前`
+        } else if (hours < 24) {
+          return `${hours}小时前`
+        } else if (days === 1) {
+          return '昨天'
+        } else if (days === 2) {
+          return '前天'
+        } else if (days < 7) {
+          return `${days}天前`
+        } else {
+          // 返回日期
+          const month = time.getMonth() + 1
+          const date = time.getDate()
+          return `${month}月${date}日`
+        }
+      } catch (error) {
+        return timeStr
+      }
+    },
+
+    // 获取库存文本
+    getStockText(item : HistoryItem) : string {
+      if (item.status !== 1) {
+        return '商品已下架'
+      }
+      if (!item.inStock) {
+        return '暂时缺货'
+      }
+      return `销量 ${item.salesVolume}`
+    }
+  }
+}
+</script>
+
+<style lang="scss" scoped>
+.history-page {
+  background-color: $uni-bg-color-grey;
+  /* 移除 100vh，使用 flex 撑满 */
+  display: flex;
+  flex-direction: column;
+}
+
+.action-bar {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: #fff;
+  border-bottom: 1px solid $uni-border-color-light;
+}
+
+.count-text {
+  font-size: 14px;
+  color: $uni-text-color-grey;
+}
+
+.clear-btn {
+  font-size: 14px;
+  color: $uni-text-color;
+  padding: 4px 8px;
+}
+
+.history-scroll {
+  flex: 1;
+  width: 100%;
+}
+
+.history-list {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.history-item {
+  background-color: #fff;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: row;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.02);
+}
+
+.goods-img {
+  width: 180rpx;
+  height: 180rpx;
+  border-radius: 8px;
+  background-color: $uni-bg-color-grey;
+  margin-right: 20rpx;
+}
+
+.goods-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 2px 0;
+}
+
+.info-top {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.goods-name {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 700;
+  color: $uni-text-color;
+  margin-bottom: 4px;
+  line-height: 1.4;
+  height: 42px;
+  overflow: hidden;
+  margin-right: 8px;
+}
+
+.view-time {
+    font-size: 12px;
+    color: $uni-text-color-grey;
+    white-space: nowrap;
+}
+
+.goods-desc {
+  font-size: 12px;
+  color: $uni-text-color-grey;
+  margin-bottom: auto;
+  line-height: 1.4;
+  height: 17px; // 一行高度
+  overflow: hidden;
+}
+
+.goods-bottom {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.price-box {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  color: $uni-color-error;
+}
+
+.currency {
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.price {
+  font-size: 16px;
+  font-weight: bold;
+  margin-right: 4px;
+}
+
+.original-price {
+  font-size: 12px;
+  color: $uni-text-color-grey;
+  opacity: 0.8;
+}
+
+.action-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: $uni-bg-color-grey;
+  border-radius: 12px;
+}
+
+.delete-text {
+  font-size: 12px;
+  color: $uni-text-color-grey;
+}
+
+.loading-more {
+  padding: 20px 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.loading-text {
+  font-size: 14px;
+  color: $uni-text-color-grey;
+}
+
+.no-more {
+  padding: 20px 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.no-more-text {
+  font-size: 12px;
+  color: $uni-text-color-disable;
+}
+
+.empty-state {
+  padding: 80px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  color: $uni-text-color-disable;
+}
+
+.empty-text {
+  font-size: 14px;
+  color: $uni-text-color-grey;
+  margin-bottom: 24px;
+}
+
+.go-shopping-btn {
+  background-color: $uni-color-primary;
+  color: #fff;
+  font-size: 14px;
+  padding: 0 32px;
+  height: 40px;
+  line-height: 40px;
+  border-radius: 20px;
+}
+</style>

@@ -1,0 +1,383 @@
+<template>
+	<view class="review-page">
+		<!-- 导航栏 -->
+		<view class="nav-bar">
+			<view class="nav-back" @click="goBack">
+				<text class="back-icon">‹</text>
+			</view>
+			<text class="nav-title">发表评价</text>
+			<view class="nav-placeholder"></view>
+		</view>
+
+		<!-- 商品信息 -->
+		<view class="product-card">
+			<image class="product-image" :src="productImage" mode="aspectFill"></image>
+			<view class="product-info">
+				<text class="product-name">{{ productName }}</text>
+			</view>
+		</view>
+
+		<!-- 评分 -->
+		<view class="rating-section">
+			<text class="section-label">商品评分</text>
+			<view class="stars-row">
+				<view class="star" v-for="i in 5" :key="i" @click="setRating(i)">
+					<text class="star-icon" :class="{ 'star-icon-active': i <= rating }">★</text>
+				</view>
+				<text class="rating-text">{{ getRatingText() }}</text>
+			</view>
+		</view>
+
+		<!-- 评价内容 -->
+		<view class="content-section">
+			<text class="section-label">评价内容</text>
+			<textarea 
+				class="content-input" 
+				v-model="content" 
+				placeholder="请分享您对商品的使用感受，帮助其他买家做出选择~"
+				:maxlength="500"
+			></textarea>
+			<text class="word-count">{{ content.length }}/500</text>
+		</view>
+
+		<!-- 评价图片 -->
+		<view class="content-section">
+			<text class="section-label">评价图片（选填）</text>
+			<view class="image-list">
+				<view class="picked-image-wrap" v-for="(img, idx) in selectedImages" :key="idx">
+					<image class="picked-image" :src="img" mode="aspectFill" @click="previewPickedImage(idx)"></image>
+					<text class="remove-image" @click="removeImage(idx)">×</text>
+				</view>
+				<view class="add-image" v-if="selectedImages.length < 6" @click="chooseImages">
+					<text class="add-image-text">+ 添加图片</text>
+				</view>
+			</view>
+		</view>
+
+		<!-- 提交按钮 -->
+		<view class="submit-section">
+			<button class="submit-btn" :class="{ 'submit-btn-disabled': isSubmitting }" :disabled="isSubmitting" @click="submitReview">
+				{{ isSubmitting ? '提交中...' : '提交评价' }}
+			</button>
+		</view>
+	</view>
+</template>
+
+<script lang="uts">
+import { publishReview } from '@/api/review'
+import { getOrderDetail, type OrderItemVO } from '@/api/order'
+
+export default {
+	data() {
+		return {
+			orderId: 0,
+			productId: 0,
+			productName: '',
+			productImage: '',
+			reviewIndex: 0,
+			reviewTotal: 1,
+			rating: 5,
+			content: '',
+			selectedImages: [] as string[],
+			isSubmitting: false
+		}
+	},
+	onLoad(options : any) {
+		const opts = options as UTSJSONObject
+		this.orderId = parseInt(opts.getString('orderId') ?? '0')
+		this.productId = parseInt(opts.getString('productId') ?? '0')
+		this.reviewIndex = parseInt(opts.getString('reviewIndex') ?? '0')
+		this.reviewTotal = parseInt(opts.getString('reviewTotal') ?? '1')
+		const nameParam : string = opts.getString('productName') ?? ''
+		const imageParam : string = opts.getString('productImage') ?? ''
+		this.productName = decodeURIComponent(nameParam) ?? ''
+		this.productImage = decodeURIComponent(imageParam) ?? ''
+	},
+	methods: {
+		goBack() {
+			uni.navigateBack()
+		},
+		setRating(star : number) {
+			this.rating = star
+		},
+		getRatingText() : string {
+			const texts = ['', '非常差', '差', '一般', '好', '非常好']
+			return texts[this.rating] ?? ''
+		},
+		chooseImages() {
+			const remain = 6 - this.selectedImages.length
+			if (remain <= 0) return
+			uni.chooseImage({
+				count: remain,
+				sizeType: ['compressed'],
+				sourceType: ['album', 'camera'],
+				success: (res) => {
+					const paths = res.tempFilePaths
+					if (paths != null && paths.length > 0) {
+						this.selectedImages = this.selectedImages.concat(paths)
+					}
+				}
+			})
+		},
+		removeImage(index : number) {
+			this.selectedImages.splice(index, 1)
+		},
+		previewPickedImage(index : number) {
+			uni.previewImage({ urls: this.selectedImages, current: index })
+		},
+		submitReview() {
+			if (this.rating == 0) {
+				uni.showToast({ title: '请选择评分', icon: 'none' })
+				return
+			}
+			this.isSubmitting = true
+			const imagesJson = this.selectedImages.length > 0 ? JSON.stringify(this.selectedImages) : ''
+			publishReview({
+				productId: this.productId,
+				orderId: this.orderId,
+				rating: this.rating,
+				content: this.content,
+				images: imagesJson
+			}).then((_res) => {
+				this.isSubmitting = false
+				uni.$emit('review:submitted', { orderId: this.orderId })
+				if (this.reviewIndex < this.reviewTotal - 1) {
+					this.goToNextPendingReview()
+				} else {
+					uni.showToast({ title: '评价成功', icon: 'success' })
+					setTimeout(() => { uni.navigateBack() }, 1200)
+				}
+			}).catch((err) => {
+				this.isSubmitting = false
+				console.error('评价失败:', err)
+				uni.showToast({ title: '评价失败', icon: 'none' })
+			})
+		},
+		goToNextPendingReview() {
+			getOrderDetail(this.orderId).then((res) => {
+				const data = res.data as UTSJSONObject
+				const arr = data.getArray('orderItems')
+				if (arr == null) {
+					uni.showToast({ title: '评价成功', icon: 'success' })
+					setTimeout(() => { uni.navigateBack() }, 1000)
+					return
+				}
+				const pending : OrderItemVO[] = []
+				for (let i = 0; i < arr.length; i++) {
+					const it = arr[i] as UTSJSONObject
+					if ((it.getBoolean('reviewed') ?? false) != true) {
+						pending.push({
+							id: (it.getNumber('id') ?? 0).toInt(),
+							productId: (it.getNumber('productId') ?? 0).toInt(),
+							skuId: (it.getNumber('skuId') ?? 0).toInt(),
+							productName: it.getString('productName') ?? '',
+							skuName: it.getString('skuName') ?? '',
+							productImage: it.getString('productImage') ?? '',
+							price: it.getNumber('price') ?? 0,
+							quantity: (it.getNumber('quantity') ?? 0).toInt(),
+							totalPrice: it.getNumber('totalPrice') ?? 0,
+							reviewed: false
+						} as OrderItemVO)
+					}
+				}
+				if (pending.length === 0) {
+					uni.showToast({ title: '评价成功', icon: 'success' })
+					setTimeout(() => { uni.navigateBack() }, 1000)
+					return
+				}
+				const next = pending[0]
+				uni.redirectTo({
+					url: `/pages/order/review?orderId=${this.orderId}&productId=${next.productId}&productName=${encodeURIComponent(next.productName)}&productImage=${encodeURIComponent(next.productImage)}&reviewIndex=${this.reviewIndex + 1}&reviewTotal=${this.reviewTotal}`
+				})
+			}).catch((_err) => {
+				uni.showToast({ title: '评价成功', icon: 'success' })
+				setTimeout(() => { uni.navigateBack() }, 1000)
+			})
+		}
+	}
+}
+</script>
+
+<style lang="scss" scoped>
+.review-page {
+	background-color: #f5f5f5;
+	min-height: 1500rpx;
+	padding-bottom: 120rpx;
+}
+.nav-bar {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	height: 88rpx;
+	background-color: #fff;
+	padding: 0 20rpx;
+	border-bottom: 1rpx solid #f0f0f0;
+}
+.nav-back {
+	width: 80rpx;
+	height: 80rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.back-icon {
+	font-size: 48rpx;
+	color: #333;
+}
+.nav-title {
+	font-size: 32rpx;
+	font-weight: 700;
+	color: #333;
+}
+.nav-placeholder {
+	width: 80rpx;
+}
+.product-card {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	background-color: #fff;
+	padding: 30rpx;
+	margin: 20rpx;
+	border-radius: 16rpx;
+}
+.product-image {
+	width: 120rpx;
+	height: 120rpx;
+	border-radius: 12rpx;
+	margin-right: 20rpx;
+}
+.product-info {
+	flex: 1;
+}
+.product-name {
+	font-size: 28rpx;
+	color: #333;
+	line-height: 1.4;
+}
+.rating-section {
+	background-color: #fff;
+	padding: 30rpx;
+	margin: 0 20rpx 20rpx;
+	border-radius: 16rpx;
+}
+.section-label {
+	font-size: 28rpx;
+	color: #333;
+	font-weight: bold;
+	margin-bottom: 20rpx;
+}
+.image-list {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+}
+.picked-image-wrap {
+	position: relative;
+	margin-right: 16rpx;
+	margin-bottom: 16rpx;
+}
+.picked-image {
+	width: 140rpx;
+	height: 140rpx;
+	border-radius: 12rpx;
+	background-color: #f5f5f5;
+}
+.remove-image {
+	position: absolute;
+	right: -10rpx;
+	top: -10rpx;
+	width: 36rpx;
+	height: 36rpx;
+	line-height: 36rpx;
+	text-align: center;
+	border-radius: 18rpx;
+	background-color: rgba(0, 0, 0, 0.6);
+	color: #fff;
+	font-size: 24rpx;
+}
+.add-image {
+	width: 140rpx;
+	height: 140rpx;
+	border-radius: 12rpx;
+	border: 2rpx dashed #d8d8d8;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: #fafafa;
+}
+.add-image-text {
+	font-size: 24rpx;
+	color: #999;
+}
+.stars-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+}
+.star {
+	padding: 10rpx;
+}
+.star-icon {
+	font-size: 56rpx;
+	color: #ddd;
+}
+.star-icon-active {
+	color: #FFB800;
+}
+.rating-text {
+	font-size: 28rpx;
+	color: #FFB800;
+	margin-left: 20rpx;
+}
+.content-section {
+	background-color: #fff;
+	padding: 30rpx;
+	margin: 0 20rpx 20rpx;
+	border-radius: 16rpx;
+	position: relative;
+}
+.content-input {
+	width: 100%;
+	height: 240rpx;
+	font-size: 28rpx;
+	color: #333;
+	line-height: 1.6;
+	padding: 20rpx;
+	background-color: #f8f8f8;
+	border-radius: 12rpx;
+	box-sizing: border-box;
+}
+.word-count {
+	position: absolute;
+	right: 50rpx;
+	bottom: 50rpx;
+	font-size: 24rpx;
+	color: #999;
+}
+.submit-section {
+	position: fixed;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	padding: 20rpx 30rpx;
+	background-color: #fff;
+	box-shadow: 0 -2rpx 10rpx rgba(0,0,0,0.05);
+}
+.submit-btn {
+	width: 100%;
+	height: 88rpx;
+	background-color: #0066CC;
+	color: #fff;
+	font-size: 32rpx;
+	font-weight: bold;
+	border-radius: 44rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.submit-btn-disabled {
+	background-color: #ccc;
+}
+</style>

@@ -1,0 +1,454 @@
+<template>
+	<view class="settings-container">
+		<!-- Header -->
+		<view class="header">
+			<text class="back-icon" @tap="handleBack">‹</text>
+			<text class="header-title">设置</text>
+		</view>
+
+		<!-- Content -->
+		<view class="content">
+			<!-- Basic Info Section -->
+			<view class="section">
+				<text class="section-title">基本信息</text>
+				
+				<view class="setting-item">
+					<text class="setting-label">用户名</text>
+					<text class="setting-value">{{ userInfo.username }}</text>
+				</view>
+
+				<view class="setting-item" @tap="handleEditEmail">
+					<text class="setting-label">邮箱</text>
+					<text class="setting-value">{{ getEmail() }}</text>
+					<text class="setting-arrow">›</text>
+				</view>
+
+				<view class="setting-item">
+					<text class="setting-label">手机号</text>
+					<text class="setting-value">{{ getPhone() }}</text>
+				</view>
+
+				<view class="setting-item" @tap="handleEditNickname">
+					<text class="setting-label">昵称</text>
+					<text class="setting-value">{{ getNickname() }}</text>
+					<text class="setting-arrow">›</text>
+				</view>
+			</view>
+
+			<!-- Security Section -->
+			<view class="section">
+				<text class="section-title">安全设置</text>
+				
+				<view class="setting-item" @tap="handleChangePassword">
+					<text class="setting-label">修改密码</text>
+					<text class="setting-arrow">›</text>
+				</view>
+			</view>
+
+			<!-- Logout Section -->
+			<view class="logout-section">
+				<button class="logout-btn" @tap="handleLogout">退出登录</button>
+			</view>
+		</view>
+
+		<!-- Edit Modal -->
+		<view v-if="showEditModal" class="modal-overlay" @tap="closeEditModal">
+			<view class="modal-content" @tap.stop="() => {}">
+				<text class="modal-title">{{ editTitle }}</text>
+				<input 
+					v-model="editValue"
+					class="modal-input"
+					:placeholder="editPlaceholder"
+					@confirm="handleConfirmEdit"
+				/>
+				<view class="modal-actions">
+					<button class="modal-btn cancel-btn" @tap="closeEditModal">取消</button>
+					<button class="modal-btn confirm-btn" @tap="handleConfirmEdit">确定</button>
+				</view>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script lang="uts">
+import { getUserProfile, logout, updateUserProfile } from '@/api/user'
+
+type UserInfoType = {
+	username : string
+	email : string
+	phone : string
+	nickname : string
+}
+
+export default {
+	data() {
+		return {
+			userInfo: {
+				username: 'testuser',
+				email: 'user@example.com',
+				phone: '13800138000',
+				nickname: '测试用户'
+			} as UserInfoType,
+			showEditModal: false,
+			editType: '',
+			editTitle: '',
+			editValue: '',
+			editPlaceholder: ''
+		}
+	},
+	onLoad() {
+		this.loadUserInfo()
+	},
+	methods: {
+		getEmail() : string {
+			return this.userInfo.email != '' ? this.userInfo.email : '未设置'
+		},
+		getPhone() : string {
+			return this.userInfo.phone != '' ? this.userInfo.phone : '未设置'
+		},
+		getNickname() : string {
+			return this.userInfo.nickname != '' ? this.userInfo.nickname : '未设置'
+		},
+		loadUserInfo() {
+			getUserProfile().then((result) => {
+				if (result.code === 200) {
+					const data = result.data as UTSJSONObject
+					if (data != null) {
+						const username = data.getString('username') ?? ''
+						const email = data.getString('email') ?? ''
+						const phone = data.getString('phone') ?? ''
+						const nickname = data.getString('nickname') ?? ''
+						
+						this.userInfo = {
+							username: username,
+							email: email,
+							phone: phone,
+							nickname: nickname
+						} as UserInfoType
+						uni.setStorageSync('user_info', JSON.stringify(this.userInfo))
+					}
+				} else {
+					// 降级到本地存储
+					this.loadFromStorage()
+				}
+			}).catch((error) => {
+				console.error('获取用户信息失败:', error)
+				// 降级到本地存储
+				this.loadFromStorage()
+			})
+		},
+		loadFromStorage() {
+			const userInfoStr = uni.getStorageSync('user_info')
+			if (userInfoStr != null && userInfoStr != '') {
+				try {
+					const infoStr = userInfoStr as string
+					const parsedInfo = JSON.parse(infoStr) as UTSJSONObject
+					if (parsedInfo != null) {
+						const username = parsedInfo.getString('username') ?? ''
+						const email = parsedInfo.getString('email') ?? ''
+						const phone = parsedInfo.getString('phone') ?? ''
+						const nickname = parsedInfo.getString('nickname') ?? ''
+						
+						this.userInfo = {
+							username: username,
+							email: email,
+							phone: phone,
+							nickname: nickname
+						} as UserInfoType
+					}
+				} catch (e) {
+					console.error('Failed to parse user info:', e)
+				}
+			}
+		},
+		handleBack() {
+			uni.navigateBack()
+		},
+		handleEditEmail() {
+			this.editType = 'email'
+			this.editTitle = '编辑邮箱'
+			this.editValue = this.userInfo.email != '' ? this.userInfo.email : ''
+			this.editPlaceholder = '请输入邮箱地址'
+			this.showEditModal = true
+		},
+		handleEditNickname() {
+			this.editType = 'nickname'
+			this.editTitle = '编辑昵称'
+			this.editValue = this.userInfo.nickname != '' ? this.userInfo.nickname : ''
+			this.editPlaceholder = '请输入昵称'
+			this.showEditModal = true
+		},
+		handleChangePassword() {
+			uni.navigateTo({
+				url: '/pages/user/change-password'
+			})
+		},
+		closeEditModal() {
+			this.showEditModal = false
+		},
+		handleConfirmEdit() {
+			const trimmedValue = this.editValue.trim()
+			if (trimmedValue == '') {
+				uni.showToast({
+					title: '内容不能为空',
+					icon: 'none'
+				})
+				return
+			}
+
+			// 验证邮箱格式
+			if (this.editType === 'email') {
+				const emailRegex = /^[a-zA-Z0-9_-]+@[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)+$/
+				const isValid = emailRegex.test(this.editValue)
+				if (isValid == false) {
+					uni.showToast({
+						title: '邮箱格式不正确',
+						icon: 'none'
+					})
+					return
+				}
+			}
+
+			let updateData : UTSJSONObject
+			if (this.editType === 'email') {
+				updateData = {
+					email: this.editValue
+				} as UTSJSONObject
+			} else if (this.editType === 'nickname') {
+				updateData = {
+					nickname: this.editValue
+				} as UTSJSONObject
+			} else {
+				updateData = {} as UTSJSONObject
+			}
+
+			updateUserProfile(updateData).then((result) => {
+				if (result.code === 200) {
+					// 更新本地数据
+					if (this.editType === 'email') {
+						this.userInfo.email = this.editValue
+					} else if (this.editType === 'nickname') {
+						this.userInfo.nickname = this.editValue
+					}
+
+					uni.setStorageSync('user_info', JSON.stringify(this.userInfo))
+
+					this.closeEditModal()
+					uni.showToast({
+						title: '更新成功',
+						icon: 'success'
+					})
+				} else {
+					const msg = result.message != '' ? result.message : '更新失败'
+					uni.showToast({
+						title: msg,
+						icon: 'error'
+					})
+				}
+			}).catch((error) => {
+				console.error('更新用户信息失败:', error)
+				uni.showToast({
+					title: '更新失败，请检查网络连接',
+					icon: 'error'
+				})
+			})
+		},
+		handleLogout() {
+			uni.showModal({
+				title: '退出登录',
+				content: '确定要退出登录吗？',
+				confirmText: '退出',
+				cancelText: '取消',
+				success: (res) => {
+					if (res.confirm) {
+						logout().then(() => {}).catch((error) => {
+							console.error('登出API调用失败:', error)
+						})
+						uni.removeStorageSync('auth_token')
+						uni.removeStorageSync('user_info')
+						uni.navigateTo({
+							url: '/pages/login/login'
+						})
+					}
+				}
+			})
+		}
+	}
+}
+</script>
+
+<style scoped>
+.settings-container {
+	flex: 1;
+	background-color: #f8f8f8;
+	display: flex;
+	flex-direction: column;
+}
+
+.header {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	padding: 10px 16px;
+	background: linear-gradient(135deg, #0066CC 0%, #1890FF 100%);
+	color: #ffffff;
+	flex-shrink: 0;
+	position: relative;
+}
+
+.back-icon {
+	font-size: 28px;
+	color: #ffffff;
+	position: absolute;
+	left: 16px;
+	top: 50%;
+	width: 44px;
+	height: 44px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 10;
+}
+
+.header-title {
+	font-size: 16px;
+	font-weight: 700;
+	color: #ffffff;
+}
+
+.content {
+	flex: 1;
+	padding: 8px 0;
+}
+
+.section {
+	background-color: #ffffff;
+	margin-bottom: 8px;
+	overflow: hidden;
+}
+
+.section-title {
+	font-size: 12px;
+	font-weight: 700;
+	color: #999999;
+	padding: 10px 16px;
+	background-color: #f8f8f8;
+}
+
+.setting-item {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: center;
+	padding: 12px 16px;
+	border-bottom: 1px solid #f0f0f0;
+}
+
+
+.setting-label {
+	font-size: 14px;
+	color: #333333;
+	font-weight: 400;
+	flex-shrink: 0;
+	width: 60px;
+}
+
+.setting-value {
+	font-size: 12px;
+	color: #999999;
+	flex: 1;
+	text-align: right;
+	margin-right: 8px;
+}
+
+.setting-arrow {
+	font-size: 18px;
+	color: #ccc;
+	flex-shrink: 0;
+}
+
+.logout-section {
+	padding: 16px;
+	flex-shrink: 0;
+}
+
+.logout-btn {
+	width: 100%;
+	height: 44px;
+	background-color: #ffffff;
+	border: 1px solid #e74c3c;
+	border-radius: 8px;
+	color: #e74c3c;
+	font-size: 15px;
+	font-weight: bold;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+}
+
+/* Modal */
+.modal-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: rgba(0, 0, 0, 0.5);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 1000;
+}
+
+.modal-content {
+	background-color: #ffffff;
+	border-radius: 12px;
+	padding: 20px;
+	width: 80%;
+	max-width: 300px;
+}
+
+.modal-title {
+	font-size: 16px;
+	font-weight: 700;
+	color: #333333;
+	margin-bottom: 12px;
+	display: flex;
+}
+
+.modal-input {
+	width: 100%;
+	height: 40px;
+	border: 1px solid #e0e0e0;
+	border-radius: 8px;
+	padding: 0 12px;
+	font-size: 14px;
+	color: #333333;
+	margin-bottom: 16px;
+	box-sizing: border-box;
+}
+
+.modal-actions {
+	display: flex;
+	margin-right: 12px;
+}
+
+.modal-btn {
+	flex: 1;
+	height: 40px;
+	border-radius: 8px;
+	font-size: 14px;
+	font-weight: 400;
+	border: none;
+}
+
+.cancel-btn {
+	background-color: #f0f0f0;
+	color: #333333;
+}
+
+.confirm-btn {
+	background: linear-gradient(135deg, #0066CC 0%, #1890FF 100%);
+	color: #ffffff;
+}
+</style>

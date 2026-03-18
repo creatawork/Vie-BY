@@ -1,0 +1,415 @@
+<template>
+	<view class="page-container">
+		<!-- Main Content -->
+		<view class="main-content">
+			<!-- Header -->
+			<view class="header">
+				<text class="title">欢迎回来</text>
+				<text class="subtitle">登录您的账号以继续</text>
+			</view>
+
+			<!-- Form Area -->
+			<view class="form-area">
+				<!-- Username -->
+				<view class="input-wrap" :class="{ 'input-wrap-error': errors.username !== '' }">
+					<input
+						v-model="form.username"
+						type="text"
+						placeholder="用户名或手机号"
+						placeholder-class="placeholder"
+						class="input-field"
+						@blur="validateUsername"
+					/>
+				</view>
+				<text v-if="errors.username !== ''" class="error-msg">{{ errors.username }}</text>
+
+				<!-- Password -->
+				<view class="input-wrap" :class="{ 'input-wrap-error': errors.password !== '' }">
+					<input
+						v-model="form.password"
+						:type="showPassword ? 'text' : 'password'"
+						placeholder="密码"
+						placeholder-class="placeholder"
+						class="input-field"
+						@blur="validatePassword"
+					/>
+					<view class="action-btn" @tap="showPassword = !showPassword">
+						<text class="action-text">{{ showPassword ? '隐藏' : '显示' }}</text>
+					</view>
+				</view>
+				<text v-if="errors.password !== ''" class="error-msg">{{ errors.password }}</text>
+
+				<!-- Links -->
+				<view class="options-row">
+					<view class="link-left" @tap.stop="handleRegister">
+						<text class="text-link">新用户注册</text>
+					</view>
+					<view class="link-right" @tap.stop="handleForgotPassword">
+						<text class="text-gray">忘记密码？</text>
+					</view>
+				</view>
+
+				<!-- Submit Button -->
+				<button
+					class="primary-btn"
+					:class="{ 'primary-btn-disabled': isLoading }"
+					:loading="isLoading"
+					@tap.stop="handleLogin"
+					:disabled="isLoading"
+				>
+					{{ isLoading ? '登录中...' : '登 录' }}
+				</button>
+			</view>
+		</view>
+
+		<!-- Bottom Logo / Branding -->
+		<view class="bottom-brand">
+			<image src="/static/logo.png" mode="aspectFit" class="brand-logo"></image>
+			<text class="brand-text">鲜农优选</text>
+		</view>
+	</view>
+</template>
+
+<script lang="uts">
+import { login } from '@/api/user'
+
+type LoginForm = {
+	username : string
+	password : string
+}
+
+type LoginErrors = {
+	username : string
+	password : string
+}
+
+export default {
+	data() {
+		return {
+			form: {
+				username: '',
+				password: ''
+			} as LoginForm,
+			errors: {
+				username: '',
+				password: ''
+			} as LoginErrors,
+			showPassword: false,
+			isLoading: false
+		}
+	},
+	methods: {
+		validateUsername() {
+			const username = this.form.username.trim()
+			if (username == '') {
+				this.errors.username = '请输入用户名或手机号'
+			} else {
+				this.errors.username = ''
+			}
+		},
+		validatePassword() {
+			const password = this.form.password
+			if (password == '') {
+				this.errors.password = '请输入密码'
+			} else if (password.length < 6) {
+				this.errors.password = '密码至少6个字符'
+			} else {
+				this.errors.password = ''
+			}
+		},
+		handleLogin() {
+			if (this.isLoading) {
+				return
+			}
+			this.validateUsername()
+			this.validatePassword()
+
+			const hasError = this.errors.username != '' || this.errors.password != ''
+			if (hasError) {
+				return
+			}
+
+			this.isLoading = true
+
+			login(this.form.username, this.form.password).then((response) => {
+				// 分开判断，避免 UTS 类型推断问题
+				if (response.data != null) {
+					const resData = response.data as UTSJSONObject
+
+					const token = resData.getString('token')
+					if (token != null && token != '') {
+						uni.setStorageSync('auth_token', token)
+						const userId = resData.getNumber('userId')
+						const username = resData.getString('username')
+						const nickname = resData.getString('nickname')
+						const avatar = resData.getString('avatar')
+						const roleCodes = resData.getAny('roleCodes')
+
+						const userInfo = {
+							id: userId != null ? userId.toInt() : 0,
+							username: username != null ? username : '',
+							nickname: nickname != null ? nickname : '',
+							avatar: avatar != null ? avatar : '',
+							roleCodes: roleCodes
+						}
+						uni.setStorageSync('user_info', JSON.stringify(userInfo))
+
+					this.isLoading = false
+					uni.showToast({
+						title: '登录成功',
+						icon: 'success'
+					})
+
+					setTimeout(() => {
+						// 根据角色跳转不同页面
+						let targetUrl = '/pages/index/index'
+						let isAdmin = false
+
+						// 只根据角色判断是否为管理员
+						if (roleCodes != null && Array.isArray(roleCodes)) {
+							const roles = roleCodes as string[]
+							if (roles.includes('ROLE_ADMIN') || roles.includes('ADMIN')) {
+								isAdmin = true
+							}
+						}
+
+						// 管理员跳转到管理后台，普通用户跳转到首页
+						if (isAdmin) {
+							targetUrl = '/pages/seller/admin-index'
+						}
+
+						// 使用 reLaunch 跳转到目标页面，重置页面栈
+						uni.reLaunch({
+							url: targetUrl,
+							fail: (err) => {
+								console.error('跳转失败:', err)
+								// 如果 reLaunch 失败，尝试使用 navigateTo
+								uni.navigateTo({
+									url: targetUrl,
+									fail: (err2) => {
+										console.error('navigateTo 也失败:', err2)
+									}
+								})
+							}
+						})
+					}, 500)
+					} else {
+						this.isLoading = false
+						uni.showToast({
+							title: '登录失败',
+							icon: 'none'
+						})
+					}
+				} else {
+					this.isLoading = false
+					uni.showToast({
+						title: '登录失败',
+						icon: 'none'
+					})
+				}
+			}).catch((error) => {
+				this.isLoading = false
+				const errMsg = error != null && (error as Error).message != null && (error as Error).message != ''
+					? (error as Error).message
+					: '登录失败，请稍后重试'
+				uni.showToast({
+					title: errMsg,
+					icon: 'none'
+				})
+			})
+		},
+		handleForgotPassword() {
+			uni.showToast({
+				title: '功能开发中',
+				icon: 'none'
+			})
+		},
+		handleRegister() {
+			uni.navigateTo({
+				url: '/pages/register/register'
+			})
+		},
+		handleQuickLogin(type : string) {
+			uni.showToast({
+				title: '功能开发中',
+				icon: 'none'
+			})
+		}
+	}
+}
+</script>
+
+<style lang="scss" scoped>
+.page-container {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	background-color: #ffffff;
+	padding: 0 60rpx;
+	position: relative;
+}
+
+.main-content {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	padding-bottom: 200rpx; /* Push content slightly up */
+}
+
+/* Header */
+.header {
+	margin-bottom: 80rpx;
+}
+
+.title {
+	font-size: 56rpx;
+	font-weight: 700;
+	color: #111111;
+	margin-bottom: 16rpx;
+	letter-spacing: 2rpx;
+}
+
+.subtitle {
+	font-size: 28rpx;
+	color: #888888;
+}
+
+/* Form Area */
+.form-area {
+	display: flex;
+	flex-direction: column;
+}
+
+.input-wrap {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	background-color: #f7f8fa;
+	height: 110rpx;
+	border-radius: 24rpx;
+	padding: 0 32rpx;
+	margin-top: 32rpx;
+	border: 2rpx solid transparent;
+}
+
+.input-wrap-error {
+	border-color: #ff4d4f;
+	background-color: #fff0f0;
+}
+
+.input-field {
+	flex: 1;
+	height: 100%;
+	font-size: 32rpx;
+	color: #333333;
+	background: transparent;
+}
+
+.placeholder {
+	color: #bbbbbb;
+	font-size: 32rpx;
+}
+
+.action-btn {
+	padding: 0 10rpx;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.action-text {
+	font-size: 28rpx;
+	color: #0066CC;
+	font-weight: bold;
+}
+
+.error-msg {
+	font-size: 24rpx;
+	color: #ff4d4f;
+	margin-top: 12rpx;
+	padding-left: 12rpx;
+}
+
+/* Options Row */
+.options-row {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: center;
+	margin-top: 16rpx;
+	margin-bottom: 24rpx;
+}
+
+.link-left {
+	padding: 30rpx 40rpx 30rpx 0; /* Huge tap target */
+	z-index: 10;
+}
+
+.link-right {
+	padding: 30rpx 0 30rpx 40rpx; /* Huge tap target */
+	z-index: 10;
+}
+
+.text-link {
+	font-size: 28rpx;
+	color: #0066CC;
+	font-weight: bold;
+}
+
+.text-gray {
+	font-size: 28rpx;
+	color: #999999;
+}
+
+/* Submit Button */
+.primary-btn {
+	width: 100%;
+	height: 110rpx;
+	background-color: #0066CC;
+	color: #ffffff;
+	border-radius: 24rpx;
+	font-size: 34rpx;
+	font-weight: bold;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	margin-top: 16rpx;
+	position: relative;
+	z-index: 1;
+}
+
+.primary-btn-disabled {
+	background-color: #a0c6ed;
+	box-shadow: none;
+}
+
+/* Bottom Brand */
+.bottom-brand {
+	position: absolute;
+	bottom: 80rpx;
+	left: 0;
+	right: 0;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	opacity: 0.6;
+}
+
+.brand-logo {
+	width: 40rpx;
+	height: 40rpx;
+	margin-right: 12rpx;
+}
+
+.brand-text {
+	font-size: 26rpx;
+	color: #888888;
+	font-weight: bold;
+	letter-spacing: 2rpx;
+}
+</style>
+

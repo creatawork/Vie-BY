@@ -1,0 +1,244 @@
+
+import { getAddressList, deleteAddress as deleteAddressApi, setDefaultAddress } from '@/api/address'
+
+
+type AddressItem = { __$originalPosition?: UTSSourceMapPosition<"AddressItem", "pages/user/address-list.uvue", 86, 6>;
+	id : number
+	receiverName : string
+	receiverPhone : string
+	province : string
+	city : string
+	district : string
+	detailAddress : string
+	fullAddress : string
+	isDefault : number
+	createTime : string
+	updateTime : string
+}
+
+const __sfc__ = defineComponent({
+	data() {
+		return {
+			addresses: [] as AddressItem[],
+			isLoading: false,
+			isSelectMode: false
+		}
+	},
+	onLoad(options : any) {
+		const opts = options as UTSJSONObject
+		this.isSelectMode = opts.getString('select') == '1'
+	},
+	onShow() {
+		this.loadData()
+	},
+	methods: {
+		onAddressClick(item : AddressItem) {
+			if (this.isSelectMode) {
+				uni.$emit('addressSelected', item)
+				uni.navigateBack()
+			}
+		},
+		loadData() {
+			if (this.isLoading) return
+
+			this.isLoading = true
+			getAddressList().then((result) => {
+				if (result.code === 200) {
+					const data = result.data as Array<UTSJSONObject>
+					if (data != null) {
+						this.addresses = data.map((item: UTSJSONObject) => {
+							return {
+								id: (item.getNumber('id') ?? 0).toInt(),
+								receiverName: item.getString('receiverName') ?? '',
+								receiverPhone: item.getString('receiverPhone') ?? '',
+								province: item.getString('province') ?? '',
+								city: item.getString('city') ?? '',
+								district: item.getString('district') ?? '',
+								detailAddress: item.getString('detailAddress') ?? '',
+								fullAddress: item.getString('fullAddress') ?? '',
+								isDefault: (item.getNumber('isDefault') ?? 0).toInt(),
+								createTime: item.getString('createTime') ?? '',
+								updateTime: item.getString('updateTime') ?? ''
+							} as AddressItem
+						})
+					}
+				} else {
+					uni.showToast({ title: result.message, icon: 'none' })
+				}
+			}).catch((error) => {
+				console.error('获取地址列表失败:', error, " at pages/user/address-list.uvue:150")
+				uni.showToast({ title: '加载失败，请重试', icon: 'none' })
+			}).finally(() => {
+				this.isLoading = false
+			})
+		},
+		formatPhone(phone : string) : string {
+			if (phone.length == 11) {
+				return phone.substring(0, 3) + '****' + phone.substring(7)
+			}
+			return phone
+		},
+		goBack() {
+			uni.navigateBack()
+		},
+		addAddress() {
+			uni.navigateTo({ url: '/pages/user/address-edit?mode=add' })
+		},
+		editAddress(item : AddressItem) {
+			uni.navigateTo({ url: '/pages/user/address-edit?mode=edit&id=' + item.id })
+		},
+		deleteAddress(index : number) {
+			const address = this.addresses[index]
+			uni.showModal({
+				title: '提示',
+				content: '确定删除该地址吗？',
+				success: (res) => {
+					if (res.confirm) {
+						deleteAddressApi(address.id).then((result) => {
+							if (result.code === 200) {
+								this.addresses.splice(index, 1)
+								uni.showToast({ title: '已删除', icon: 'success' })
+							} else {
+								uni.showToast({ title: result.message, icon: 'none' })
+							}
+						}).catch((error) => {
+							console.error('删除地址失败:', error, " at pages/user/address-list.uvue:186")
+							uni.showToast({ title: '删除失败，请重试', icon: 'none' })
+						})
+					}
+				}
+			})
+		},
+		setDefault(index : number) {
+			const address = this.addresses[index]
+			// 如果已经是默认地址，不需要重复设置
+			if (address.isDefault === 1) {
+				return
+			}
+
+			setDefaultAddress(address.id).then((result) => {
+				if (result.code === 200) {
+					// 更新本地数据
+					this.addresses.forEach((item : AddressItem, i : number) => {
+						item.isDefault = i == index ? 1 : 0
+					})
+					uni.showToast({ title: '设置成功', icon: 'success' })
+				} else {
+					uni.showToast({ title: result.message, icon: 'none' })
+				}
+			}).catch((error) => {
+				console.error('设置默认地址失败:', error, " at pages/user/address-list.uvue:211")
+				uni.showToast({ title: '设置失败，请重试', icon: 'none' })
+			})
+		}
+	}
+})
+
+export default __sfc__
+function GenPagesUserAddressListRender(this: InstanceType<typeof __sfc__>): any | null {
+const _ctx = this
+const _cache = this.$.renderCache
+  return createElementVNode("view", utsMapOf({ class: "page" }), [
+    createElementVNode("view", utsMapOf({ class: "nav-header" }), [
+      createElementVNode("view", utsMapOf({ class: "status-bar" })),
+      createElementVNode("view", utsMapOf({ class: "nav-bar" }), [
+        createElementVNode("view", utsMapOf({
+          class: "nav-back",
+          onClick: _ctx.goBack
+        }), [
+          createElementVNode("text", utsMapOf({ class: "back-arrow" }), "‹")
+        ], 8 /* PROPS */, ["onClick"]),
+        createElementVNode("text", utsMapOf({ class: "nav-title" }), "收货地址"),
+        createElementVNode("view", utsMapOf({ class: "nav-right" }))
+      ])
+    ]),
+    createElementVNode("scroll-view", utsMapOf({
+      class: "main-content",
+      "scroll-y": "true",
+      "show-scrollbar": false
+    }), [
+      _ctx.addresses.length > 0
+        ? createElementVNode("view", utsMapOf({
+            key: 0,
+            class: "address-cards"
+          }), [
+            createElementVNode(Fragment, null, RenderHelpers.renderList(_ctx.addresses, (item, index, __index, _cached): any => {
+              return createElementVNode("view", utsMapOf({
+                class: "address-card",
+                key: item.id,
+                onClick: () => {_ctx.onAddressClick(item)}
+              }), [
+                isTrue(item.isDefault)
+                  ? createElementVNode("view", utsMapOf({
+                      key: 0,
+                      class: "default-tag"
+                    }), [
+                      createElementVNode("text", utsMapOf({ class: "default-tag-text" }), "默认")
+                    ])
+                  : createCommentVNode("v-if", true),
+                createElementVNode("view", utsMapOf({ class: "card-main" }), [
+                  createElementVNode("view", utsMapOf({ class: "contact-row" }), [
+                    createElementVNode("text", utsMapOf({ class: "contact-name" }), toDisplayString(item.receiverName), 1 /* TEXT */),
+                    createElementVNode("text", utsMapOf({ class: "contact-phone" }), toDisplayString(_ctx.formatPhone(item.receiverPhone)), 1 /* TEXT */)
+                  ]),
+                  createElementVNode("view", utsMapOf({ class: "address-row" }), [
+                    createElementVNode("text", utsMapOf({ class: "address-text" }), toDisplayString(item.fullAddress), 1 /* TEXT */)
+                  ])
+                ]),
+                createElementVNode("view", utsMapOf({ class: "card-actions" }), [
+                  createElementVNode("view", utsMapOf({
+                    class: "action-left",
+                    onClick: () => {_ctx.setDefault(index)}
+                  }), [
+                    createElementVNode("view", utsMapOf({
+                      class: normalizeClass(["radio-box", utsMapOf({ 'radio-box-active': item.isDefault })])
+                    }), [
+                      isTrue(item.isDefault)
+                        ? createElementVNode("text", utsMapOf({
+                            key: 0,
+                            class: "radio-dot"
+                          }), "✓")
+                        : createCommentVNode("v-if", true)
+                    ], 2 /* CLASS */),
+                    createElementVNode("text", utsMapOf({ class: "action-text" }), "默认地址")
+                  ], 8 /* PROPS */, ["onClick"]),
+                  createElementVNode("view", utsMapOf({ class: "action-right" }), [
+                    createElementVNode("view", utsMapOf({
+                      class: "action-btn",
+                      onClick: () => {_ctx.editAddress(item)}
+                    }), [
+                      createElementVNode("text", utsMapOf({ class: "action-btn-text" }), "编辑")
+                    ], 8 /* PROPS */, ["onClick"]),
+                    createElementVNode("view", utsMapOf({
+                      class: "action-btn",
+                      onClick: () => {_ctx.deleteAddress(index)}
+                    }), [
+                      createElementVNode("text", utsMapOf({ class: "action-btn-text action-btn-text-delete" }), "删除")
+                    ], 8 /* PROPS */, ["onClick"])
+                  ])
+                ])
+              ], 8 /* PROPS */, ["onClick"])
+            }), 128 /* KEYED_FRAGMENT */)
+          ])
+        : createElementVNode("view", utsMapOf({
+            key: 1,
+            class: "empty-box"
+          }), [
+            createElementVNode("text", utsMapOf({ class: "empty-icon" }), "📭"),
+            createElementVNode("text", utsMapOf({ class: "empty-title" }), "暂无收货地址"),
+            createElementVNode("text", utsMapOf({ class: "empty-desc" }), "添加地址后可快速下单")
+          ]),
+      createElementVNode("view", utsMapOf({ class: "footer-space" }))
+    ]),
+    createElementVNode("view", utsMapOf({ class: "footer-btn-box" }), [
+      createElementVNode("view", utsMapOf({
+        class: "add-btn",
+        onClick: _ctx.addAddress
+      }), [
+        createElementVNode("text", utsMapOf({ class: "add-btn-icon" }), "+"),
+        createElementVNode("text", utsMapOf({ class: "add-btn-text" }), "新增收货地址")
+      ], 8 /* PROPS */, ["onClick"])
+    ])
+  ])
+}
+const GenPagesUserAddressListStyles = [utsMapOf([["page", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "column"], ["backgroundColor", "#F5F7FA"], ["height", "100%"]]))], ["nav-header", padStyleMapOf(utsMapOf([["backgroundColor", "#FFFFFF"]]))], ["status-bar", padStyleMapOf(utsMapOf([["height", CSS_VAR_STATUS_BAR_HEIGHT]]))], ["nav-bar", padStyleMapOf(utsMapOf([["height", "88rpx"], ["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["justifyContent", "space-between"], ["paddingTop", 0], ["paddingRight", "24rpx"], ["paddingBottom", 0], ["paddingLeft", "24rpx"]]))], ["nav-back", padStyleMapOf(utsMapOf([["width", "80rpx"], ["height", "80rpx"], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["back-arrow", padStyleMapOf(utsMapOf([["fontSize", "56rpx"], ["color", "#333333"], ["fontWeight", "400"]]))], ["nav-title", padStyleMapOf(utsMapOf([["fontSize", "34rpx"], ["fontWeight", "700"], ["color", "#1A1A1A"]]))], ["nav-right", padStyleMapOf(utsMapOf([["width", "80rpx"]]))], ["main-content", padStyleMapOf(utsMapOf([["flex", 1], ["paddingTop", "24rpx"], ["paddingRight", "24rpx"], ["paddingBottom", "24rpx"], ["paddingLeft", "24rpx"]]))], ["address-cards", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "column"]]))], ["address-card", padStyleMapOf(utsMapOf([["backgroundColor", "#FFFFFF"], ["borderTopLeftRadius", "24rpx"], ["borderTopRightRadius", "24rpx"], ["borderBottomRightRadius", "24rpx"], ["borderBottomLeftRadius", "24rpx"], ["marginBottom", "24rpx"], ["paddingTop", "32rpx"], ["paddingRight", "32rpx"], ["paddingBottom", "32rpx"], ["paddingLeft", "32rpx"], ["position", "relative"], ["overflow", "hidden"]]))], ["default-tag", padStyleMapOf(utsMapOf([["position", "absolute"], ["top", 0], ["right", 0], ["backgroundColor", "#0066CC"], ["paddingTop", "8rpx"], ["paddingRight", "24rpx"], ["paddingBottom", "8rpx"], ["paddingLeft", "24rpx"], ["borderBottomLeftRadius", "16rpx"]]))], ["default-tag-text", padStyleMapOf(utsMapOf([["fontSize", "22rpx"], ["color", "#FFFFFF"]]))], ["card-main", padStyleMapOf(utsMapOf([["paddingBottom", "24rpx"], ["borderBottomWidth", "1rpx"], ["borderBottomStyle", "solid"], ["borderBottomColor", "#F0F0F0"]]))], ["contact-row", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["marginBottom", "16rpx"]]))], ["contact-name", padStyleMapOf(utsMapOf([["fontSize", "32rpx"], ["fontWeight", "700"], ["color", "#1A1A1A"], ["marginRight", "20rpx"]]))], ["contact-phone", padStyleMapOf(utsMapOf([["fontSize", "28rpx"], ["color", "#666666"], ["marginRight", "16rpx"]]))], ["tag-badge", padStyleMapOf(utsMapOf([["backgroundColor", "#E8F4FF"], ["paddingTop", "4rpx"], ["paddingRight", "16rpx"], ["paddingBottom", "4rpx"], ["paddingLeft", "16rpx"], ["borderTopLeftRadius", "8rpx"], ["borderTopRightRadius", "8rpx"], ["borderBottomRightRadius", "8rpx"], ["borderBottomLeftRadius", "8rpx"]]))], ["tag-badge-text", padStyleMapOf(utsMapOf([["fontSize", "22rpx"], ["color", "#0066CC"]]))], ["address-row", padStyleMapOf(utsMapOf([["display", "flex"]]))], ["address-text", padStyleMapOf(utsMapOf([["fontSize", "28rpx"], ["color", "#666666"], ["lineHeight", 1.5]]))], ["card-actions", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"], ["alignItems", "center"], ["paddingTop", "24rpx"]]))], ["action-left", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"]]))], ["radio-box", padStyleMapOf(utsMapOf([["width", "36rpx"], ["height", "36rpx"], ["borderTopWidth", "2rpx"], ["borderRightWidth", "2rpx"], ["borderBottomWidth", "2rpx"], ["borderLeftWidth", "2rpx"], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#CCCCCC"], ["borderRightColor", "#CCCCCC"], ["borderBottomColor", "#CCCCCC"], ["borderLeftColor", "#CCCCCC"], ["borderTopLeftRadius", "18rpx"], ["borderTopRightRadius", "18rpx"], ["borderBottomRightRadius", "18rpx"], ["borderBottomLeftRadius", "18rpx"], ["marginRight", "12rpx"], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["radio-box-active", padStyleMapOf(utsMapOf([["backgroundColor", "#0066CC"], ["borderTopColor", "#0066CC"], ["borderRightColor", "#0066CC"], ["borderBottomColor", "#0066CC"], ["borderLeftColor", "#0066CC"]]))], ["radio-dot", padStyleMapOf(utsMapOf([["fontSize", "24rpx"], ["color", "#FFFFFF"]]))], ["action-text", padStyleMapOf(utsMapOf([["fontSize", "26rpx"], ["color", "#666666"]]))], ["action-right", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"]]))], ["action-btn", padStyleMapOf(utsMapOf([["paddingTop", "12rpx"], ["paddingRight", "28rpx"], ["paddingBottom", "12rpx"], ["paddingLeft", "28rpx"], ["marginLeft", "16rpx"]]))], ["action-btn-text", padStyleMapOf(utsMapOf([["fontSize", "26rpx"], ["color", "#0066CC"]]))], ["action-btn-text-delete", padStyleMapOf(utsMapOf([["color", "#999999"]]))], ["empty-box", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"], ["paddingTop", "160rpx"], ["paddingRight", 0], ["paddingBottom", "160rpx"], ["paddingLeft", 0]]))], ["empty-icon", padStyleMapOf(utsMapOf([["fontSize", "120rpx"], ["marginBottom", "32rpx"]]))], ["empty-title", padStyleMapOf(utsMapOf([["fontSize", "32rpx"], ["color", "#333333"], ["fontWeight", "700"], ["marginBottom", "16rpx"]]))], ["empty-desc", padStyleMapOf(utsMapOf([["fontSize", "26rpx"], ["color", "#999999"]]))], ["footer-space", padStyleMapOf(utsMapOf([["height", "180rpx"]]))], ["footer-btn-box", padStyleMapOf(utsMapOf([["position", "fixed"], ["bottom", 0], ["left", 0], ["right", 0], ["paddingTop", "24rpx"], ["paddingRight", "32rpx"], ["paddingBottom", "48rpx"], ["paddingLeft", "32rpx"], ["backgroundColor", "#FFFFFF"]]))], ["add-btn", padStyleMapOf(utsMapOf([["height", "96rpx"], ["backgroundColor", "#0066CC"], ["borderTopLeftRadius", "48rpx"], ["borderTopRightRadius", "48rpx"], ["borderBottomRightRadius", "48rpx"], ["borderBottomLeftRadius", "48rpx"], ["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["add-btn-icon", padStyleMapOf(utsMapOf([["fontSize", "40rpx"], ["color", "#FFFFFF"], ["marginRight", "12rpx"]]))], ["add-btn-text", padStyleMapOf(utsMapOf([["fontSize", "32rpx"], ["color", "#FFFFFF"], ["fontWeight", "700"]]))]])]

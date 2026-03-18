@@ -1,0 +1,470 @@
+<template>
+	<view class="page">
+		<!-- 顶部导航 -->
+		<view class="nav-header">
+			<view class="status-bar"></view>
+			<view class="nav-bar">
+				<view class="nav-back" @click="goBack">
+					<text class="back-arrow">‹</text>
+				</view>
+				<text class="nav-title">收货地址</text>
+				<view class="nav-right"></view>
+			</view>
+		</view>
+
+		<!-- 主内容区 -->
+		<scroll-view class="main-content" scroll-y="true" :show-scrollbar="false">
+			<!-- 地址卡片列表 -->
+			<view class="address-cards" v-if="addresses.length > 0">
+				<view
+					class="address-card"
+					v-for="(item, index) in addresses"
+					:key="item.id"
+					@click="onAddressClick(item)"
+				>
+					<!-- 默认标识 -->
+					<view class="default-tag" v-if="item.isDefault">
+						<text class="default-tag-text">默认</text>
+					</view>
+
+					<!-- 地址信息 -->
+					<view class="card-main">
+						<view class="contact-row">
+							<text class="contact-name">{{ item.receiverName }}</text>
+							<text class="contact-phone">{{ formatPhone(item.receiverPhone) }}</text>
+						</view>
+						<view class="address-row">
+							<text class="address-text">{{ item.fullAddress }}</text>
+						</view>
+					</view>
+
+					<!-- 操作栏 -->
+					<view class="card-actions">
+						<view class="action-left" @click="setDefault(index)">
+							<view class="radio-box" :class="{ 'radio-box-active': item.isDefault }">
+								<text class="radio-dot" v-if="item.isDefault">✓</text>
+							</view>
+							<text class="action-text">默认地址</text>
+						</view>
+						<view class="action-right">
+							<view class="action-btn" @click="editAddress(item)">
+								<text class="action-btn-text">编辑</text>
+							</view>
+							<view class="action-btn" @click="deleteAddress(index)">
+								<text class="action-btn-text action-btn-text-delete">删除</text>
+							</view>
+						</view>
+					</view>
+				</view>
+			</view>
+
+			<!-- 空状态 -->
+			<view class="empty-box" v-else>
+				<text class="empty-icon">📭</text>
+				<text class="empty-title">暂无收货地址</text>
+				<text class="empty-desc">添加地址后可快速下单</text>
+			</view>
+
+			<!-- 底部占位 -->
+			<view class="footer-space"></view>
+		</scroll-view>
+
+		<!-- 底部按钮 -->
+		<view class="footer-btn-box">
+			<view class="add-btn" @click="addAddress">
+				<text class="add-btn-icon">+</text>
+				<text class="add-btn-text">新增收货地址</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script lang="uts">
+import { getAddressList, deleteAddress as deleteAddressApi, setDefaultAddress } from '@/api/address'
+
+
+type AddressItem = {
+	id : number
+	receiverName : string
+	receiverPhone : string
+	province : string
+	city : string
+	district : string
+	detailAddress : string
+	fullAddress : string
+	isDefault : number
+	createTime : string
+	updateTime : string
+}
+
+export default {
+	data() {
+		return {
+			addresses: [] as AddressItem[],
+			isLoading: false,
+			isSelectMode: false
+		}
+	},
+	onLoad(options : any) {
+		const opts = options as UTSJSONObject
+		this.isSelectMode = opts.getString('select') == '1'
+	},
+	onShow() {
+		this.loadData()
+	},
+	methods: {
+		onAddressClick(item : AddressItem) {
+			if (this.isSelectMode) {
+				uni.$emit('addressSelected', item)
+				uni.navigateBack()
+			}
+		},
+		loadData() {
+			if (this.isLoading) return
+
+			this.isLoading = true
+			getAddressList().then((result) => {
+				if (result.code === 200) {
+					const data = result.data as Array<UTSJSONObject>
+					if (data != null) {
+						this.addresses = data.map((item: UTSJSONObject) => {
+							return {
+								id: (item.getNumber('id') ?? 0).toInt(),
+								receiverName: item.getString('receiverName') ?? '',
+								receiverPhone: item.getString('receiverPhone') ?? '',
+								province: item.getString('province') ?? '',
+								city: item.getString('city') ?? '',
+								district: item.getString('district') ?? '',
+								detailAddress: item.getString('detailAddress') ?? '',
+								fullAddress: item.getString('fullAddress') ?? '',
+								isDefault: (item.getNumber('isDefault') ?? 0).toInt(),
+								createTime: item.getString('createTime') ?? '',
+								updateTime: item.getString('updateTime') ?? ''
+							} as AddressItem
+						})
+					}
+				} else {
+					uni.showToast({ title: result.message, icon: 'none' })
+				}
+			}).catch((error) => {
+				console.error('获取地址列表失败:', error)
+				uni.showToast({ title: '加载失败，请重试', icon: 'none' })
+			}).finally(() => {
+				this.isLoading = false
+			})
+		},
+		formatPhone(phone : string) : string {
+			if (phone.length == 11) {
+				return phone.substring(0, 3) + '****' + phone.substring(7)
+			}
+			return phone
+		},
+		goBack() {
+			uni.navigateBack()
+		},
+		addAddress() {
+			uni.navigateTo({ url: '/pages/user/address-edit?mode=add' })
+		},
+		editAddress(item : AddressItem) {
+			uni.navigateTo({ url: '/pages/user/address-edit?mode=edit&id=' + item.id })
+		},
+		deleteAddress(index : number) {
+			const address = this.addresses[index]
+			uni.showModal({
+				title: '提示',
+				content: '确定删除该地址吗？',
+				success: (res) => {
+					if (res.confirm) {
+						deleteAddressApi(address.id).then((result) => {
+							if (result.code === 200) {
+								this.addresses.splice(index, 1)
+								uni.showToast({ title: '已删除', icon: 'success' })
+							} else {
+								uni.showToast({ title: result.message, icon: 'none' })
+							}
+						}).catch((error) => {
+							console.error('删除地址失败:', error)
+							uni.showToast({ title: '删除失败，请重试', icon: 'none' })
+						})
+					}
+				}
+			})
+		},
+		setDefault(index : number) {
+			const address = this.addresses[index]
+			// 如果已经是默认地址，不需要重复设置
+			if (address.isDefault === 1) {
+				return
+			}
+
+			setDefaultAddress(address.id).then((result) => {
+				if (result.code === 200) {
+					// 更新本地数据
+					this.addresses.forEach((item : AddressItem, i : number) => {
+						item.isDefault = i == index ? 1 : 0
+					})
+					uni.showToast({ title: '设置成功', icon: 'success' })
+				} else {
+					uni.showToast({ title: result.message, icon: 'none' })
+				}
+			}).catch((error) => {
+				console.error('设置默认地址失败:', error)
+				uni.showToast({ title: '设置失败，请重试', icon: 'none' })
+			})
+		}
+	}
+}
+</script>
+
+<style lang="scss" scoped>
+.page {
+	display: flex;
+	flex-direction: column;
+	background-color: #F5F7FA;
+	height: 100%;
+}
+
+/* 导航栏 */
+.nav-header {
+	background-color: #FFFFFF;
+}
+
+.status-bar {
+	height: var(--status-bar-height);
+}
+
+.nav-bar {
+	height: 88rpx;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 24rpx;
+}
+
+.nav-back {
+	width: 80rpx;
+	height: 80rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.back-arrow {
+	font-size: 56rpx;
+	color: #333333;
+	font-weight: 400;
+}
+
+.nav-title {
+	font-size: 34rpx;
+	font-weight: 700;
+	color: #1A1A1A;
+}
+
+.nav-right {
+	width: 80rpx;
+}
+
+/* 主内容 */
+.main-content {
+	flex: 1;
+	padding: 24rpx;
+}
+
+/* 地址卡片 */
+.address-cards {
+	display: flex;
+	flex-direction: column;
+}
+
+.address-card {
+	background-color: #FFFFFF;
+	border-radius: 24rpx;
+	margin-bottom: 24rpx;
+	padding: 32rpx;
+	position: relative;
+	overflow: hidden;
+}
+
+.default-tag {
+	position: absolute;
+	top: 0;
+	right: 0;
+	background-color: #0066CC;
+	padding: 8rpx 24rpx;
+	border-bottom-left-radius: 16rpx;
+}
+
+.default-tag-text {
+	font-size: 22rpx;
+	color: #FFFFFF;
+}
+
+.card-main {
+	padding-bottom: 24rpx;
+	border-bottom: 1rpx solid #F0F0F0;
+}
+
+.contact-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	margin-bottom: 16rpx;
+}
+
+.contact-name {
+	font-size: 32rpx;
+	font-weight: 700;
+	color: #1A1A1A;
+	margin-right: 20rpx;
+}
+
+.contact-phone {
+	font-size: 28rpx;
+	color: #666666;
+	margin-right: 16rpx;
+}
+
+.tag-badge {
+	background-color: #E8F4FF;
+	padding: 4rpx 16rpx;
+	border-radius: 8rpx;
+}
+
+.tag-badge-text {
+	font-size: 22rpx;
+	color: #0066CC;
+}
+
+.address-row {
+	display: flex;
+}
+
+.address-text {
+	font-size: 28rpx;
+	color: #666666;
+	line-height: 1.5;
+}
+
+/* 操作栏 */
+.card-actions {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: center;
+	padding-top: 24rpx;
+}
+
+.action-left {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+}
+
+.radio-box {
+	width: 36rpx;
+	height: 36rpx;
+	border: 2rpx solid #CCCCCC;
+	border-radius: 18rpx;
+	margin-right: 12rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.radio-box-active {
+	background-color: #0066CC;
+	border-color: #0066CC;
+}
+
+.radio-dot {
+	font-size: 24rpx;
+	color: #FFFFFF;
+}
+
+.action-text {
+	font-size: 26rpx;
+	color: #666666;
+}
+
+.action-right {
+	display: flex;
+	flex-direction: row;
+}
+
+.action-btn {
+	padding: 12rpx 28rpx;
+	margin-left: 16rpx;
+}
+
+.action-btn-text {
+	font-size: 26rpx;
+	color: #0066CC;
+}
+
+.action-btn-text-delete {
+	color: #999999;
+}
+
+/* 空状态 */
+.empty-box {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 160rpx 0;
+}
+
+.empty-icon {
+	font-size: 120rpx;
+	margin-bottom: 32rpx;
+}
+
+.empty-title {
+	font-size: 32rpx;
+	color: #333333;
+	font-weight: 700;
+	margin-bottom: 16rpx;
+}
+
+.empty-desc {
+	font-size: 26rpx;
+	color: #999999;
+}
+
+/* 底部 */
+.footer-space {
+	height: 180rpx;
+}
+
+.footer-btn-box {
+	position: fixed;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	padding: 24rpx 32rpx 48rpx;
+	background-color: #FFFFFF;
+}
+
+.add-btn {
+	height: 96rpx;
+	background-color: #0066CC;
+	border-radius: 48rpx;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+}
+
+.add-btn-icon {
+	font-size: 40rpx;
+	color: #FFFFFF;
+	margin-right: 12rpx;
+}
+
+.add-btn-text {
+	font-size: 32rpx;
+	color: #FFFFFF;
+	font-weight: 700;
+}
+</style>

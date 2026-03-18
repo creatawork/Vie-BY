@@ -1,0 +1,256 @@
+
+import { login } from '@/api/user'
+
+type LoginForm = { __$originalPosition?: UTSSourceMapPosition<"LoginForm", "pages/login/login.uvue", 76, 6>;
+	username : string
+	password : string
+}
+
+type LoginErrors = { __$originalPosition?: UTSSourceMapPosition<"LoginErrors", "pages/login/login.uvue", 81, 6>;
+	username : string
+	password : string
+}
+
+const __sfc__ = defineComponent({
+	data() {
+		return {
+			form: {
+				username: '',
+				password: ''
+			} as LoginForm,
+			errors: {
+				username: '',
+				password: ''
+			} as LoginErrors,
+			showPassword: false,
+			isLoading: false
+		}
+	},
+	methods: {
+		validateUsername() {
+			const username = this.form.username.trim()
+			if (username == '') {
+				this.errors.username = '请输入用户名或手机号'
+			} else {
+				this.errors.username = ''
+			}
+		},
+		validatePassword() {
+			const password = this.form.password
+			if (password == '') {
+				this.errors.password = '请输入密码'
+			} else if (password.length < 6) {
+				this.errors.password = '密码至少6个字符'
+			} else {
+				this.errors.password = ''
+			}
+		},
+		handleLogin() {
+			if (this.isLoading) {
+				return
+			}
+			this.validateUsername()
+			this.validatePassword()
+
+			const hasError = this.errors.username != '' || this.errors.password != ''
+			if (hasError) {
+				return
+			}
+
+			this.isLoading = true
+
+			login(this.form.username, this.form.password).then((response) => {
+				// 分开判断，避免 UTS 类型推断问题
+				if (response.data != null) {
+					const resData = response.data as UTSJSONObject
+
+					const token = resData.getString('token')
+					if (token != null && token != '') {
+						uni.setStorageSync('auth_token', token)
+						const userId = resData.getNumber('userId')
+						const username = resData.getString('username')
+						const nickname = resData.getString('nickname')
+						const avatar = resData.getString('avatar')
+						const roleCodes = resData.getAny('roleCodes')
+
+						const userInfo = {__$originalPosition: new UTSSourceMapPosition("userInfo", "pages/login/login.uvue", 148, 13),
+							id: userId != null ? userId.toInt() : 0,
+							username: username != null ? username : '',
+							nickname: nickname != null ? nickname : '',
+							avatar: avatar != null ? avatar : '',
+							roleCodes: roleCodes
+						}
+						uni.setStorageSync('user_info', JSON.stringify(userInfo))
+
+					this.isLoading = false
+					uni.showToast({
+						title: '登录成功',
+						icon: 'success'
+					})
+
+					setTimeout(() => {
+						// 根据角色跳转不同页面
+						let targetUrl = '/pages/index/index'
+						let isAdmin = false
+
+						// 只根据角色判断是否为管理员
+						if (roleCodes != null && Array.isArray(roleCodes)) {
+							const roles = roleCodes as string[]
+							if (roles.includes('ROLE_ADMIN') || roles.includes('ADMIN')) {
+								isAdmin = true
+							}
+						}
+
+						// 管理员跳转到管理后台，普通用户跳转到首页
+						if (isAdmin) {
+							targetUrl = '/pages/seller/admin-index'
+						}
+
+						// 使用 reLaunch 跳转到目标页面，重置页面栈
+						uni.reLaunch({
+							url: targetUrl,
+							fail: (err) => {
+								console.error('跳转失败:', err, " at pages/login/login.uvue:185")
+								// 如果 reLaunch 失败，尝试使用 navigateTo
+								uni.navigateTo({
+									url: targetUrl,
+									fail: (err2) => {
+										console.error('navigateTo 也失败:', err2, " at pages/login/login.uvue:190")
+									}
+								})
+							}
+						})
+					}, 500)
+					} else {
+						this.isLoading = false
+						uni.showToast({
+							title: '登录失败',
+							icon: 'none'
+						})
+					}
+				} else {
+					this.isLoading = false
+					uni.showToast({
+						title: '登录失败',
+						icon: 'none'
+					})
+				}
+			}).catch((error) => {
+				this.isLoading = false
+				const errMsg = error != null && (error as Error).message != null && (error as Error).message != ''
+					? (error as Error).message
+					: '登录失败，请稍后重试'
+				uni.showToast({
+					title: errMsg,
+					icon: 'none'
+				})
+			})
+		},
+		handleForgotPassword() {
+			uni.showToast({
+				title: '功能开发中',
+				icon: 'none'
+			})
+		},
+		handleRegister() {
+			uni.navigateTo({
+				url: '/pages/register/register'
+			})
+		},
+		handleQuickLogin(type : string) {
+			uni.showToast({
+				title: '功能开发中',
+				icon: 'none'
+			})
+		}
+	}
+})
+
+export default __sfc__
+function GenPagesLoginLoginRender(this: InstanceType<typeof __sfc__>): any | null {
+const _ctx = this
+const _cache = this.$.renderCache
+  return createElementVNode("view", utsMapOf({ class: "page-container" }), [
+    createElementVNode("view", utsMapOf({ class: "main-content" }), [
+      createElementVNode("view", utsMapOf({ class: "header" }), [
+        createElementVNode("text", utsMapOf({ class: "title" }), "欢迎回来"),
+        createElementVNode("text", utsMapOf({ class: "subtitle" }), "登录您的账号以继续")
+      ]),
+      createElementVNode("view", utsMapOf({ class: "form-area" }), [
+        createElementVNode("view", utsMapOf({
+          class: normalizeClass(["input-wrap", utsMapOf({ 'input-wrap-error': _ctx.errors.username !== '' })])
+        }), [
+          createElementVNode("input", utsMapOf({
+            modelValue: _ctx.form.username,
+            onInput: ($event: InputEvent) => {(_ctx.form.username) = $event.detail.value},
+            type: "text",
+            placeholder: "用户名或手机号",
+            "placeholder-class": "placeholder",
+            class: "input-field",
+            onBlur: _ctx.validateUsername
+          }), null, 40 /* PROPS, NEED_HYDRATION */, ["modelValue", "onInput", "onBlur"])
+        ], 2 /* CLASS */),
+        _ctx.errors.username !== ''
+          ? createElementVNode("text", utsMapOf({
+              key: 0,
+              class: "error-msg"
+            }), toDisplayString(_ctx.errors.username), 1 /* TEXT */)
+          : createCommentVNode("v-if", true),
+        createElementVNode("view", utsMapOf({
+          class: normalizeClass(["input-wrap", utsMapOf({ 'input-wrap-error': _ctx.errors.password !== '' })])
+        }), [
+          createElementVNode("input", utsMapOf({
+            modelValue: _ctx.form.password,
+            onInput: ($event: InputEvent) => {(_ctx.form.password) = $event.detail.value},
+            type: _ctx.showPassword ? 'text' : 'password',
+            placeholder: "密码",
+            "placeholder-class": "placeholder",
+            class: "input-field",
+            onBlur: _ctx.validatePassword
+          }), null, 40 /* PROPS, NEED_HYDRATION */, ["modelValue", "onInput", "type", "onBlur"]),
+          createElementVNode("view", utsMapOf({
+            class: "action-btn",
+            onClick: () => {_ctx.showPassword = !_ctx.showPassword}
+          }), [
+            createElementVNode("text", utsMapOf({ class: "action-text" }), toDisplayString(_ctx.showPassword ? '隐藏' : '显示'), 1 /* TEXT */)
+          ], 8 /* PROPS */, ["onClick"])
+        ], 2 /* CLASS */),
+        _ctx.errors.password !== ''
+          ? createElementVNode("text", utsMapOf({
+              key: 1,
+              class: "error-msg"
+            }), toDisplayString(_ctx.errors.password), 1 /* TEXT */)
+          : createCommentVNode("v-if", true),
+        createElementVNode("view", utsMapOf({ class: "options-row" }), [
+          createElementVNode("view", utsMapOf({
+            class: "link-left",
+            onClick: withModifiers(_ctx.handleRegister, ["stop"])
+          }), [
+            createElementVNode("text", utsMapOf({ class: "text-link" }), "新用户注册")
+          ], 8 /* PROPS */, ["onClick"]),
+          createElementVNode("view", utsMapOf({
+            class: "link-right",
+            onClick: withModifiers(_ctx.handleForgotPassword, ["stop"])
+          }), [
+            createElementVNode("text", utsMapOf({ class: "text-gray" }), "忘记密码？")
+          ], 8 /* PROPS */, ["onClick"])
+        ]),
+        createElementVNode("button", utsMapOf({
+          class: normalizeClass(["primary-btn", utsMapOf({ 'primary-btn-disabled': _ctx.isLoading })]),
+          loading: _ctx.isLoading,
+          onClick: withModifiers(_ctx.handleLogin, ["stop"]),
+          disabled: _ctx.isLoading
+        }), toDisplayString(_ctx.isLoading ? '登录中...' : '登 录'), 11 /* TEXT, CLASS, PROPS */, ["loading", "onClick", "disabled"])
+      ])
+    ]),
+    createElementVNode("view", utsMapOf({ class: "bottom-brand" }), [
+      createElementVNode("image", utsMapOf({
+        src: "/static/logo.png",
+        mode: "aspectFit",
+        class: "brand-logo"
+      })),
+      createElementVNode("text", utsMapOf({ class: "brand-text" }), "鲜农优选")
+    ])
+  ])
+}
+const GenPagesLoginLoginStyles = [utsMapOf([["page-container", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "column"], ["flex", 1], ["backgroundColor", "#ffffff"], ["paddingTop", 0], ["paddingRight", "60rpx"], ["paddingBottom", 0], ["paddingLeft", "60rpx"], ["position", "relative"]]))], ["main-content", padStyleMapOf(utsMapOf([["flex", 1], ["display", "flex"], ["flexDirection", "column"], ["justifyContent", "center"], ["paddingBottom", "200rpx"]]))], ["header", padStyleMapOf(utsMapOf([["marginBottom", "80rpx"]]))], ["title", padStyleMapOf(utsMapOf([["fontSize", "56rpx"], ["fontWeight", "700"], ["color", "#111111"], ["marginBottom", "16rpx"], ["letterSpacing", "2rpx"]]))], ["subtitle", padStyleMapOf(utsMapOf([["fontSize", "28rpx"], ["color", "#888888"]]))], ["form-area", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "column"]]))], ["input-wrap", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["backgroundColor", "#f7f8fa"], ["height", "110rpx"], ["borderTopLeftRadius", "24rpx"], ["borderTopRightRadius", "24rpx"], ["borderBottomRightRadius", "24rpx"], ["borderBottomLeftRadius", "24rpx"], ["paddingTop", 0], ["paddingRight", "32rpx"], ["paddingBottom", 0], ["paddingLeft", "32rpx"], ["marginTop", "32rpx"], ["borderTopWidth", "2rpx"], ["borderRightWidth", "2rpx"], ["borderBottomWidth", "2rpx"], ["borderLeftWidth", "2rpx"], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "rgba(0,0,0,0)"], ["borderRightColor", "rgba(0,0,0,0)"], ["borderBottomColor", "rgba(0,0,0,0)"], ["borderLeftColor", "rgba(0,0,0,0)"]]))], ["input-wrap-error", padStyleMapOf(utsMapOf([["borderTopColor", "#ff4d4f"], ["borderRightColor", "#ff4d4f"], ["borderBottomColor", "#ff4d4f"], ["borderLeftColor", "#ff4d4f"], ["backgroundColor", "#fff0f0"]]))], ["input-field", padStyleMapOf(utsMapOf([["flex", 1], ["height", "100%"], ["fontSize", "32rpx"], ["color", "#333333"], ["backgroundImage", "none"], ["backgroundColor", "rgba(0,0,0,0)"]]))], ["placeholder", padStyleMapOf(utsMapOf([["color", "#bbbbbb"], ["fontSize", "32rpx"]]))], ["action-btn", padStyleMapOf(utsMapOf([["paddingTop", 0], ["paddingRight", "10rpx"], ["paddingBottom", 0], ["paddingLeft", "10rpx"], ["height", "100%"], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["action-text", padStyleMapOf(utsMapOf([["fontSize", "28rpx"], ["color", "#0066CC"], ["fontWeight", "bold"]]))], ["error-msg", padStyleMapOf(utsMapOf([["fontSize", "24rpx"], ["color", "#ff4d4f"], ["marginTop", "12rpx"], ["paddingLeft", "12rpx"]]))], ["options-row", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"], ["alignItems", "center"], ["marginTop", "16rpx"], ["marginBottom", "24rpx"]]))], ["link-left", padStyleMapOf(utsMapOf([["paddingTop", "30rpx"], ["paddingRight", "40rpx"], ["paddingBottom", "30rpx"], ["paddingLeft", 0], ["zIndex", 10]]))], ["link-right", padStyleMapOf(utsMapOf([["paddingTop", "30rpx"], ["paddingRight", 0], ["paddingBottom", "30rpx"], ["paddingLeft", "40rpx"], ["zIndex", 10]]))], ["text-link", padStyleMapOf(utsMapOf([["fontSize", "28rpx"], ["color", "#0066CC"], ["fontWeight", "bold"]]))], ["text-gray", padStyleMapOf(utsMapOf([["fontSize", "28rpx"], ["color", "#999999"]]))], ["primary-btn", padStyleMapOf(utsMapOf([["width", "100%"], ["height", "110rpx"], ["backgroundColor", "#0066CC"], ["color", "#ffffff"], ["borderTopLeftRadius", "24rpx"], ["borderTopRightRadius", "24rpx"], ["borderBottomRightRadius", "24rpx"], ["borderBottomLeftRadius", "24rpx"], ["fontSize", "34rpx"], ["fontWeight", "bold"], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"], ["borderTopWidth", "medium"], ["borderRightWidth", "medium"], ["borderBottomWidth", "medium"], ["borderLeftWidth", "medium"], ["borderTopStyle", "none"], ["borderRightStyle", "none"], ["borderBottomStyle", "none"], ["borderLeftStyle", "none"], ["borderTopColor", "#000000"], ["borderRightColor", "#000000"], ["borderBottomColor", "#000000"], ["borderLeftColor", "#000000"], ["marginTop", "16rpx"], ["position", "relative"], ["zIndex", 1]]))], ["primary-btn-disabled", padStyleMapOf(utsMapOf([["backgroundColor", "#a0c6ed"], ["boxShadow", "none"]]))], ["bottom-brand", padStyleMapOf(utsMapOf([["position", "absolute"], ["bottom", "80rpx"], ["left", 0], ["right", 0], ["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["justifyContent", "center"], ["opacity", 0.6]]))], ["brand-logo", padStyleMapOf(utsMapOf([["width", "40rpx"], ["height", "40rpx"], ["marginRight", "12rpx"]]))], ["brand-text", padStyleMapOf(utsMapOf([["fontSize", "26rpx"], ["color", "#888888"], ["fontWeight", "bold"], ["letterSpacing", "2rpx"]]))]])]

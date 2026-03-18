@@ -1,0 +1,29 @@
+/**
+ * 浏览历史相关API接口
+ */
+import { get, post, del, ResponseDataType } from '@/utils/request';
+/**
+ * 手动记录浏览历史
+ */
+export function recordBrowse(productId: number): Promise<ResponseDataType> {
+    return post(`/browse-history?productId=${productId}`, null);
+}
+/**
+ * 获取浏览历史列表
+ */
+export function getBrowseHistory(pageNum: number, pageSize: number): Promise<ResponseDataType> {
+    return get(`/browse-history?pageNum=${pageNum}&pageSize=${pageSize}`);
+}
+/**
+ * 删除浏览记录
+ */
+export function deleteBrowseHistory(historyId: number): Promise<ResponseDataType> {
+    return del(`/browse-history/${historyId}`);
+}
+/**
+ * 清空浏览历史
+ */
+export function clearBrowseHistory(): Promise<ResponseDataType> {
+    return del('/browse-history/clear');
+}
+//# sourceMappingURL=browseHistory.uts.map

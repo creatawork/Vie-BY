@@ -1,0 +1,440 @@
+
+import { getInventoryList, adjustInventory, type InventoryQueryParams, type AdjustData } from '@/api/seller'
+
+// 库存项类型定义
+type InventoryItemType = { __$originalPosition?: UTSSourceMapPosition<"InventoryItemType", "pages/seller/inventory.uvue", 168, 6>;
+  skuId: number
+  productId: number
+  productName: string
+  mainImage: string
+  skuName: string
+  price: number
+  stock: number
+  sales: number
+}
+
+const __sfc__ = defineComponent({
+  data() {
+    return {
+      showLowStock: false,
+      isLoading: false,
+      isRefreshing: false,
+      hasMore: true,
+      pageNum: 1,
+      pageSize: 10,
+      inventoryList: [] as InventoryItemType[],
+      
+      // 调整弹窗相关
+      showAdjustModal: false,
+      currentItem: null as InventoryItemType | null,
+      adjustType: 'ADD' as string,  // 'ADD' | 'REDUCE' | 'SET'
+      adjustQuantity: '',
+      adjustRemark: ''
+    }
+  },
+  computed: {
+    canSubmit(): boolean {
+      if (this.adjustQuantity === '') return false
+      const qty = parseInt(this.adjustQuantity)
+      if (isNaN(qty) || qty < 0) return false
+      if (this.getPreviewStock() < 0) return false
+      return true
+    }
+  },
+  onLoad() {
+    this.loadInventory()
+  },
+  methods: {
+    // 加载库存列表
+    loadInventory() {
+      this.isLoading = true
+      const params: InventoryQueryParams = {
+        pageNum: this.pageNum,
+        pageSize: this.pageSize,
+        productId: null,
+        lowStock: this.showLowStock ? true : null
+      }
+      
+      getInventoryList(params).then((res) => {
+        const data = res.data as UTSJSONObject
+        const total = (data.getNumber('total') ?? 0).toInt()
+        const itemList = this.parseInventoryFromData(data)
+        
+        if (this.pageNum === 1) {
+          this.inventoryList = itemList
+        } else {
+          this.inventoryList = this.inventoryList.concat(itemList)
+        }
+        
+        this.hasMore = this.inventoryList.length < total
+        this.isLoading = false
+        this.isRefreshing = false
+      }).catch((err) => {
+        console.error('获取库存列表失败:', err, " at pages/seller/inventory.uvue:236")
+        this.isLoading = false
+        this.isRefreshing = false
+        uni.showToast({ title: '获取库存失败', icon: 'none' })
+      })
+    },
+    
+    // 解析库存数据
+    parseInventoryFromData(data: UTSJSONObject): InventoryItemType[] {
+      const records = data.getArray('records')
+      if (records == null) return [] as InventoryItemType[]
+
+      const itemList: InventoryItemType[] = []
+      for (let i = 0; i < records.length; i++) {
+        const product = records[i] as UTSJSONObject
+        const productId = (product.getNumber('productId') ?? 0).toInt()
+        const productName = product.getString('productName') ?? ''
+        const mainImage = product.getString('mainImage') ?? ''
+
+        const skuList = product.getArray('skuList')
+        if (skuList != null) {
+          for (let j = 0; j < skuList.length; j++) {
+            const sku = skuList[j] as UTSJSONObject
+            itemList.push({
+              skuId: (sku.getNumber('skuId') ?? 0).toInt(),
+              productId: productId,
+              productName: productName,
+              mainImage: mainImage,
+              skuName: sku.getString('skuName') ?? '默认规格',
+              price: sku.getNumber('price') ?? 0,
+              stock: (sku.getNumber('stock') ?? 0).toInt(),
+              sales: (sku.getNumber('salesVolume') ?? 0).toInt()
+            } as InventoryItemType)
+          }
+        }
+      }
+      return itemList
+    },
+    
+    // 切换低库存筛选
+    toggleLowStock() {
+      this.showLowStock = !this.showLowStock
+      this.pageNum = 1
+      this.inventoryList = []
+      this.loadInventory()
+    },
+    
+    // 下拉刷新
+    onRefresh() {
+      this.isRefreshing = true
+      this.pageNum = 1
+      this.loadInventory()
+    },
+    
+    // 加载更多
+    loadMore() {
+      if (!this.hasMore || this.isLoading) return
+      this.pageNum++
+      this.loadInventory()
+    },
+    
+    // 打开调整弹窗
+    openAdjustModal(item: InventoryItemType) {
+      this.currentItem = item
+      this.adjustType = 'ADD'
+      this.adjustQuantity = ''
+      this.adjustRemark = ''
+      this.showAdjustModal = true
+    },
+    
+    // 关闭调整弹窗
+    closeAdjustModal() {
+      this.showAdjustModal = false
+      this.currentItem = null
+    },
+    
+    // 选择调整类型
+    selectAdjustType(type: string) {
+      this.adjustType = type
+    },
+    
+    // 计算预览库存
+    getPreviewStock(): number {
+      if (this.currentItem == null || this.adjustQuantity === '') return 0
+      const qty = parseInt(this.adjustQuantity)
+      if (isNaN(qty)) return this.currentItem!.stock
+      
+      if (this.adjustType === 'ADD') {
+        return this.currentItem!.stock + qty
+      } else if (this.adjustType === 'REDUCE') {
+        return this.currentItem!.stock - qty
+      } else {
+        return qty
+      }
+    },
+    
+    // 提交库存调整
+    submitAdjust() {
+      if (!this.canSubmit || this.currentItem == null) return
+      
+      const qty = parseInt(this.adjustQuantity)
+      const data: AdjustData = {
+        adjustType: this.adjustType,
+        quantity: qty,
+        remark: this.adjustRemark !== '' ? this.adjustRemark : null
+      }
+      
+      uni.showLoading({ title: '调整中...' })
+      
+      adjustInventory(this.currentItem!.skuId, data).then((res) => {
+        uni.hideLoading()
+
+        // 更新本地数据
+        const resData = res.data as UTSJSONObject
+        const newStock = (resData.getNumber('afterStock') ?? this.getPreviewStock()).toInt()
+
+        const index = this.inventoryList.findIndex((item: InventoryItemType): boolean =>
+          item.skuId === this.currentItem!.skuId
+        )
+        if (index !== -1) {
+          this.inventoryList[index].stock = newStock
+        }
+
+        this.closeAdjustModal()
+        uni.showToast({ title: '调整成功', icon: 'success' })
+      }).catch((err) => {
+        uni.hideLoading()
+        console.error('库存调整失败:', err, " at pages/seller/inventory.uvue:363")
+        uni.showToast({ title: '调整失败', icon: 'none' })
+      })
+    }
+  }
+})
+
+export default __sfc__
+function GenPagesSellerInventoryRender(this: InstanceType<typeof __sfc__>): any | null {
+const _ctx = this
+const _cache = this.$.renderCache
+  return createElementVNode("view", utsMapOf({ class: "page" }), [
+    createElementVNode("view", utsMapOf({ class: "filter-header" }), [
+      createElementVNode("view", utsMapOf({ class: "filter-row" }), [
+        createElementVNode("view", utsMapOf({ class: "filter-left" }), [
+          createElementVNode("text", utsMapOf({ class: "filter-title" }), "库存管理")
+        ]),
+        createElementVNode("view", utsMapOf({ class: "filter-right" }), [
+          createElementVNode("view", utsMapOf({
+            class: "low-stock-switch",
+            onClick: _ctx.toggleLowStock
+          }), [
+            createElementVNode("view", utsMapOf({
+              class: normalizeClass(["switch-box", utsMapOf({ 'switch-box-active': _ctx.showLowStock })])
+            }), [
+              createElementVNode("view", utsMapOf({
+                class: normalizeClass(["switch-dot", utsMapOf({ 'switch-dot-active': _ctx.showLowStock })])
+              }), null, 2 /* CLASS */)
+            ], 2 /* CLASS */),
+            createElementVNode("text", utsMapOf({ class: "switch-label" }), "仅显示低库存")
+          ], 8 /* PROPS */, ["onClick"])
+        ])
+      ])
+    ]),
+    createElementVNode("scroll-view", utsMapOf({
+      class: "inventory-scroll",
+      "scroll-y": "true",
+      onScrolltolower: _ctx.loadMore,
+      onRefresherrefresh: _ctx.onRefresh,
+      "refresher-enabled": true,
+      "refresher-triggered": _ctx.isRefreshing,
+      "show-scrollbar": false
+    }), [
+      isTrue(_ctx.isLoading && _ctx.inventoryList.length === 0)
+        ? createElementVNode("view", utsMapOf({
+            key: 0,
+            class: "loading-state"
+          }), [
+            createElementVNode("text", utsMapOf({ class: "loading-text" }), "加载中...")
+          ])
+        : createElementVNode("view", utsMapOf({
+            key: 1,
+            class: "inventory-list"
+          }), [
+            createElementVNode(Fragment, null, RenderHelpers.renderList(_ctx.inventoryList, (item, __key, __index, _cached): any => {
+              return createElementVNode("view", utsMapOf({
+                class: "inventory-card",
+                key: item.skuId
+              }), [
+                createElementVNode("view", utsMapOf({ class: "card-header" }), [
+                  createElementVNode("image", utsMapOf({
+                    class: "product-img",
+                    src: item.mainImage,
+                    mode: "aspectFill"
+                  }), null, 8 /* PROPS */, ["src"]),
+                  createElementVNode("view", utsMapOf({ class: "product-info" }), [
+                    createElementVNode("text", utsMapOf({ class: "product-name" }), toDisplayString(item.productName), 1 /* TEXT */),
+                    createElementVNode("text", utsMapOf({ class: "sku-name" }), "规格: " + toDisplayString(item.skuName), 1 /* TEXT */)
+                  ])
+                ]),
+                createElementVNode("view", utsMapOf({ class: "card-body" }), [
+                  createElementVNode("view", utsMapOf({ class: "stock-info" }), [
+                    createElementVNode("view", utsMapOf({ class: "info-item" }), [
+                      createElementVNode("text", utsMapOf({ class: "info-label" }), "当前库存"),
+                      createElementVNode("text", utsMapOf({
+                        class: normalizeClass(["info-value", utsMapOf({ 'info-value-low-stock': item.stock < 10 })])
+                      }), toDisplayString(item.stock), 3 /* TEXT, CLASS */)
+                    ]),
+                    createElementVNode("view", utsMapOf({ class: "info-item" }), [
+                      createElementVNode("text", utsMapOf({ class: "info-label" }), "销量"),
+                      createElementVNode("text", utsMapOf({ class: "info-value" }), toDisplayString(item.sales), 1 /* TEXT */)
+                    ]),
+                    createElementVNode("view", utsMapOf({ class: "info-item" }), [
+                      createElementVNode("text", utsMapOf({ class: "info-label" }), "价格"),
+                      createElementVNode("text", utsMapOf({ class: "info-value info-value-price" }), "¥" + toDisplayString(item.price.toFixed(2)), 1 /* TEXT */)
+                    ])
+                  ]),
+                  createElementVNode("view", utsMapOf({ class: "action-area" }), [
+                    createElementVNode("view", utsMapOf({
+                      class: "adjust-btn",
+                      onClick: () => {_ctx.openAdjustModal(item)}
+                    }), [
+                      createElementVNode("text", utsMapOf({ class: "adjust-btn-text" }), "调整库存")
+                    ], 8 /* PROPS */, ["onClick"])
+                  ])
+                ])
+              ])
+            }), 128 /* KEYED_FRAGMENT */)
+          ]),
+      isTrue(!_ctx.isLoading && _ctx.inventoryList.length === 0)
+        ? createElementVNode("view", utsMapOf({
+            key: 2,
+            class: "empty-state"
+          }), [
+            createElementVNode("text", utsMapOf({ class: "empty-icon" }), "📦"),
+            createElementVNode("text", utsMapOf({ class: "empty-text" }), toDisplayString(_ctx.showLowStock ? '暂无低库存商品' : '暂无库存数据'), 1 /* TEXT */)
+          ])
+        : createCommentVNode("v-if", true),
+      _ctx.inventoryList.length > 0
+        ? createElementVNode("view", utsMapOf({
+            key: 3,
+            class: "load-more"
+          }), [
+            createElementVNode("text", utsMapOf({ class: "load-more-text" }), toDisplayString(_ctx.hasMore ? '上拉加载更多' : '没有更多了'), 1 /* TEXT */)
+          ])
+        : createCommentVNode("v-if", true),
+      createElementVNode("view", utsMapOf({
+        style: normalizeStyle(utsMapOf({"height":"20px"}))
+      }), null, 4 /* STYLE */)
+    ], 40 /* PROPS, NEED_HYDRATION */, ["onScrolltolower", "onRefresherrefresh", "refresher-triggered"]),
+    isTrue(_ctx.showAdjustModal)
+      ? createElementVNode("view", utsMapOf({
+          key: 0,
+          class: "modal-mask",
+          onClick: _ctx.closeAdjustModal
+        }), [
+          createElementVNode("view", utsMapOf({
+            class: "modal-content",
+            onClick: withModifiers(() => {}, ["stop"])
+          }), [
+            createElementVNode("view", utsMapOf({ class: "modal-header" }), [
+              createElementVNode("text", utsMapOf({ class: "modal-title" }), "调整库存"),
+              createElementVNode("view", utsMapOf({
+                class: "modal-close",
+                onClick: _ctx.closeAdjustModal
+              }), [
+                createElementVNode("text", utsMapOf({ class: "close-icon" }), "×")
+              ], 8 /* PROPS */, ["onClick"])
+            ]),
+            createElementVNode("view", utsMapOf({ class: "modal-body" }), [
+              _ctx.currentItem != null
+                ? createElementVNode("view", utsMapOf({
+                    key: 0,
+                    class: "adjust-product-info"
+                  }), [
+                    createElementVNode("text", utsMapOf({ class: "adjust-product-name" }), toDisplayString(_ctx.currentItem!.productName), 1 /* TEXT */),
+                    createElementVNode("text", utsMapOf({ class: "adjust-sku-name" }), "规格: " + toDisplayString(_ctx.currentItem!.skuName), 1 /* TEXT */),
+                    createElementVNode("view", utsMapOf({ class: "current-stock-row" }), [
+                      createElementVNode("text", utsMapOf({ class: "current-stock-label" }), "当前库存:"),
+                      createElementVNode("text", utsMapOf({ class: "current-stock-value" }), toDisplayString(_ctx.currentItem!.stock), 1 /* TEXT */)
+                    ])
+                  ])
+                : createCommentVNode("v-if", true),
+              createElementVNode("view", utsMapOf({ class: "adjust-type-section" }), [
+                createElementVNode("text", utsMapOf({ class: "section-label" }), "调整类型"),
+                createElementVNode("view", utsMapOf({ class: "type-options" }), [
+                  createElementVNode("view", utsMapOf({
+                    class: normalizeClass(["type-option type-option-first", utsMapOf({ 'type-option-active': _ctx.adjustType === 'ADD' })]),
+                    onClick: () => {_ctx.selectAdjustType('ADD')}
+                  }), [
+                    createElementVNode("text", utsMapOf({
+                      class: normalizeClass(["type-text", utsMapOf({ 'type-text-active': _ctx.adjustType === 'ADD' })])
+                    }), "增加", 2 /* CLASS */)
+                  ], 10 /* CLASS, PROPS */, ["onClick"]),
+                  createElementVNode("view", utsMapOf({
+                    class: normalizeClass(["type-option", utsMapOf({ 'type-option-active': _ctx.adjustType === 'REDUCE' })]),
+                    onClick: () => {_ctx.selectAdjustType('REDUCE')}
+                  }), [
+                    createElementVNode("text", utsMapOf({
+                      class: normalizeClass(["type-text", utsMapOf({ 'type-text-active': _ctx.adjustType === 'REDUCE' })])
+                    }), "减少", 2 /* CLASS */)
+                  ], 10 /* CLASS, PROPS */, ["onClick"]),
+                  createElementVNode("view", utsMapOf({
+                    class: normalizeClass(["type-option type-option-last", utsMapOf({ 'type-option-active': _ctx.adjustType === 'SET' })]),
+                    onClick: () => {_ctx.selectAdjustType('SET')}
+                  }), [
+                    createElementVNode("text", utsMapOf({
+                      class: normalizeClass(["type-text", utsMapOf({ 'type-text-active': _ctx.adjustType === 'SET' })])
+                    }), "设置", 2 /* CLASS */)
+                  ], 10 /* CLASS, PROPS */, ["onClick"])
+                ])
+              ]),
+              createElementVNode("view", utsMapOf({ class: "adjust-quantity-section" }), [
+                createElementVNode("text", utsMapOf({ class: "section-label" }), toDisplayString(_ctx.adjustType === 'SET' ? '设置为' : '调整数量'), 1 /* TEXT */),
+                createElementVNode("view", utsMapOf({ class: "quantity-input-row" }), [
+                  createElementVNode("input", utsMapOf({
+                    class: "quantity-input",
+                    type: "number",
+                    modelValue: _ctx.adjustQuantity,
+                    onInput: ($event: InputEvent) => {(_ctx.adjustQuantity) = $event.detail.value},
+                    placeholder: "请输入数量"
+                  }), null, 40 /* PROPS, NEED_HYDRATION */, ["modelValue", "onInput"])
+                ])
+              ]),
+              isTrue(_ctx.currentItem != null && _ctx.adjustQuantity !== '')
+                ? createElementVNode("view", utsMapOf({
+                    key: 1,
+                    class: "preview-section"
+                  }), [
+                    createElementVNode("text", utsMapOf({ class: "preview-label" }), "调整后库存:"),
+                    createElementVNode("text", utsMapOf({
+                      class: normalizeClass(["preview-value", utsMapOf({ 'preview-value-low-stock': _ctx.getPreviewStock() < 10, 'preview-value-error': _ctx.getPreviewStock() < 0 })])
+                    }), toDisplayString(_ctx.getPreviewStock()), 3 /* TEXT, CLASS */),
+                    _ctx.getPreviewStock() < 0
+                      ? createElementVNode("text", utsMapOf({
+                          key: 0,
+                          class: "preview-error"
+                        }), "库存不能为负数")
+                      : createCommentVNode("v-if", true)
+                  ])
+                : createCommentVNode("v-if", true),
+              createElementVNode("view", utsMapOf({ class: "remark-section" }), [
+                createElementVNode("text", utsMapOf({ class: "section-label" }), "备注（可选）"),
+                createElementVNode("input", utsMapOf({
+                  class: "remark-input",
+                  modelValue: _ctx.adjustRemark,
+                  onInput: ($event: InputEvent) => {(_ctx.adjustRemark) = $event.detail.value},
+                  placeholder: "请输入调整原因"
+                }), null, 40 /* PROPS, NEED_HYDRATION */, ["modelValue", "onInput"])
+              ])
+            ]),
+            createElementVNode("view", utsMapOf({ class: "modal-footer" }), [
+              createElementVNode("view", utsMapOf({
+                class: "cancel-btn",
+                onClick: _ctx.closeAdjustModal
+              }), [
+                createElementVNode("text", utsMapOf({ class: "cancel-btn-text" }), "取消")
+              ], 8 /* PROPS */, ["onClick"]),
+              createElementVNode("view", utsMapOf({
+                class: normalizeClass(["confirm-btn", utsMapOf({ 'confirm-btn-disabled': !_ctx.canSubmit })]),
+                onClick: _ctx.submitAdjust
+              }), [
+                createElementVNode("text", utsMapOf({ class: "confirm-btn-text" }), "确认调整")
+              ], 10 /* CLASS, PROPS */, ["onClick"])
+            ])
+          ], 8 /* PROPS */, ["onClick"])
+        ], 8 /* PROPS */, ["onClick"])
+      : createCommentVNode("v-if", true)
+  ])
+}
+const GenPagesSellerInventoryStyles = [utsMapOf([["page", padStyleMapOf(utsMapOf([["backgroundColor", "#f7f8fa"], ["display", "flex"], ["flexDirection", "column"], ["flex", 1]]))], ["filter-header", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["paddingTop", CSS_VAR_STATUS_BAR_HEIGHT], ["boxShadow", "0 1px 4px rgba(0, 0, 0, 0.05)"], ["zIndex", 100]]))], ["filter-row", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"], ["alignItems", "center"], ["paddingTop", 12], ["paddingRight", 16], ["paddingBottom", 12], ["paddingLeft", 16]]))], ["filter-left", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"]]))], ["filter-title", padStyleMapOf(utsMapOf([["fontSize", 16], ["fontWeight", "700"], ["color", "#333333"]]))], ["filter-right", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"]]))], ["low-stock-switch", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"]]))], ["switch-box", padStyleMapOf(utsMapOf([["width", 40], ["height", 22], ["backgroundColor", "#dddddd"], ["borderTopLeftRadius", 11], ["borderTopRightRadius", 11], ["borderBottomRightRadius", 11], ["borderBottomLeftRadius", 11], ["position", "relative"]]))], ["switch-box-active", padStyleMapOf(utsMapOf([["backgroundColor", "#0066CC"]]))], ["switch-dot", padStyleMapOf(utsMapOf([["width", 18], ["height", 18], ["backgroundColor", "#ffffff"], ["borderTopLeftRadius", 9], ["borderTopRightRadius", 9], ["borderBottomRightRadius", 9], ["borderBottomLeftRadius", 9], ["position", "absolute"], ["top", 2], ["left", 2]]))], ["switch-dot-active", padStyleMapOf(utsMapOf([["left", 20]]))], ["switch-label", padStyleMapOf(utsMapOf([["fontSize", 13], ["color", "#666666"], ["marginLeft", 8]]))], ["inventory-scroll", padStyleMapOf(utsMapOf([["flex", 1], ["width", "100%"]]))], ["loading-state", padStyleMapOf(utsMapOf([["paddingTop", 60], ["paddingRight", 0], ["paddingBottom", 60], ["paddingLeft", 0], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["loading-text", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#999999"]]))], ["inventory-list", padStyleMapOf(utsMapOf([["paddingTop", 12], ["paddingRight", 16], ["paddingBottom", 12], ["paddingLeft", 16], ["display", "flex"], ["flexDirection", "column"]]))], ["inventory-card", padStyleMapOf(utsMapOf([["backgroundColor", "#ffffff"], ["borderTopLeftRadius", 12], ["borderTopRightRadius", 12], ["borderBottomRightRadius", 12], ["borderBottomLeftRadius", 12], ["paddingTop", 12], ["paddingRight", 12], ["paddingBottom", 12], ["paddingLeft", 12], ["marginBottom", 12], ["boxShadow", "0 2px 8px rgba(0, 0, 0, 0.02)"]]))], ["card-header", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["paddingBottom", 12], ["borderBottomWidth", 1], ["borderBottomStyle", "solid"], ["borderBottomColor", "#f5f5f5"]]))], ["product-img", padStyleMapOf(utsMapOf([["width", 60], ["height", 60], ["borderTopLeftRadius", 8], ["borderTopRightRadius", 8], ["borderBottomRightRadius", 8], ["borderBottomLeftRadius", 8], ["backgroundColor", "#f5f5f5"], ["flexShrink", 0]]))], ["product-info", padStyleMapOf(utsMapOf([["flex", 1], ["marginLeft", 12], ["display", "flex"], ["flexDirection", "column"], ["justifyContent", "center"]]))], ["product-name", padStyleMapOf(utsMapOf([["fontSize", 14], ["fontWeight", "700"], ["color", "#333333"], ["lineHeight", 1.4], ["overflow", "hidden"], ["textOverflow", "ellipsis"]]))], ["sku-name", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"], ["marginTop", 4]]))], ["card-body", padStyleMapOf(utsMapOf([["paddingTop", 12]]))], ["stock-info", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"]]))], ["info-item", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"], ["flex", 1]]))], ["info-label", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"]]))], ["info-value", padStyleMapOf(utsMapOf([["fontSize", 16], ["fontWeight", "700"], ["color", "#333333"], ["marginTop", 4]]))], ["info-value-low-stock", padStyleMapOf(utsMapOf([["color", "#ff4d4f"]]))], ["info-value-price", padStyleMapOf(utsMapOf([["color", "#ff4d4f"], ["fontSize", 14]]))], ["action-area", padStyleMapOf(utsMapOf([["display", "flex"], ["justifyContent", "flex-end"], ["marginTop", 12]]))], ["adjust-btn", padStyleMapOf(utsMapOf([["paddingTop", 6], ["paddingRight", 16], ["paddingBottom", 6], ["paddingLeft", 16], ["backgroundColor", "#0066CC"], ["borderTopLeftRadius", 16], ["borderTopRightRadius", 16], ["borderBottomRightRadius", 16], ["borderBottomLeftRadius", 16]]))], ["adjust-btn-text", padStyleMapOf(utsMapOf([["fontSize", 13], ["color", "#ffffff"]]))], ["empty-state", padStyleMapOf(utsMapOf([["paddingTop", 80], ["paddingRight", 0], ["paddingBottom", 80], ["paddingLeft", 0], ["display", "flex"], ["flexDirection", "column"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["empty-icon", padStyleMapOf(utsMapOf([["fontSize", 48], ["marginBottom", 16], ["color", "#cccccc"]]))], ["empty-text", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#999999"]]))], ["load-more", padStyleMapOf(utsMapOf([["paddingTop", 20], ["paddingRight", 0], ["paddingBottom", 20], ["paddingLeft", 0], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["load-more-text", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"]]))], ["modal-mask", padStyleMapOf(utsMapOf([["position", "fixed"], ["top", 0], ["left", 0], ["right", 0], ["bottom", 0], ["backgroundColor", "rgba(0,0,0,0.5)"], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"], ["zIndex", 1000]]))], ["modal-content", padStyleMapOf(utsMapOf([["width", "85%"], ["maxWidth", 340], ["backgroundColor", "#ffffff"], ["borderTopLeftRadius", 16], ["borderTopRightRadius", 16], ["borderBottomRightRadius", 16], ["borderBottomLeftRadius", 16], ["overflow", "hidden"]]))], ["modal-header", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["justifyContent", "space-between"], ["alignItems", "center"], ["paddingTop", 16], ["paddingRight", 16], ["paddingBottom", 16], ["paddingLeft", 16], ["borderBottomWidth", 1], ["borderBottomStyle", "solid"], ["borderBottomColor", "#f5f5f5"]]))], ["modal-title", padStyleMapOf(utsMapOf([["fontSize", 16], ["fontWeight", "700"], ["color", "#333333"]]))], ["modal-close", padStyleMapOf(utsMapOf([["width", 24], ["height", 24], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["close-icon", padStyleMapOf(utsMapOf([["fontSize", 20], ["color", "#999999"]]))], ["modal-body", padStyleMapOf(utsMapOf([["paddingTop", 16], ["paddingRight", 16], ["paddingBottom", 16], ["paddingLeft", 16]]))], ["adjust-product-info", padStyleMapOf(utsMapOf([["backgroundColor", "#f7f8fa"], ["borderTopLeftRadius", 8], ["borderTopRightRadius", 8], ["borderBottomRightRadius", 8], ["borderBottomLeftRadius", 8], ["paddingTop", 12], ["paddingRight", 12], ["paddingBottom", 12], ["paddingLeft", 12], ["marginBottom", 16]]))], ["adjust-product-name", padStyleMapOf(utsMapOf([["fontSize", 14], ["fontWeight", "700"], ["color", "#333333"]]))], ["adjust-sku-name", padStyleMapOf(utsMapOf([["fontSize", 12], ["color", "#999999"], ["marginTop", 4]]))], ["current-stock-row", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["marginTop", 8]]))], ["current-stock-label", padStyleMapOf(utsMapOf([["fontSize", 13], ["color", "#666666"]]))], ["current-stock-value", padStyleMapOf(utsMapOf([["fontSize", 16], ["fontWeight", "700"], ["color", "#0066CC"], ["marginLeft", 8]]))], ["section-label", padStyleMapOf(utsMapOf([["fontSize", 13], ["color", "#666666"], ["marginBottom", 8]]))], ["adjust-type-section", padStyleMapOf(utsMapOf([["marginBottom", 16]]))], ["type-options", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"]]))], ["type-option", padStyleMapOf(utsMapOf([["flex", 1], ["paddingTop", 10], ["paddingRight", 0], ["paddingBottom", 10], ["paddingLeft", 0], ["borderTopWidth", 1], ["borderRightWidth", 1], ["borderBottomWidth", 1], ["borderLeftWidth", 1], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#dddddd"], ["borderRightColor", "#dddddd"], ["borderBottomColor", "#dddddd"], ["borderLeftColor", "#dddddd"], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"]]))], ["type-option-first", padStyleMapOf(utsMapOf([["borderTopLeftRadius", 8], ["borderTopRightRadius", 0], ["borderBottomRightRadius", 0], ["borderBottomLeftRadius", 8]]))], ["type-option-last", padStyleMapOf(utsMapOf([["borderTopLeftRadius", 0], ["borderTopRightRadius", 8], ["borderBottomRightRadius", 8], ["borderBottomLeftRadius", 0]]))], ["type-option-active", padStyleMapOf(utsMapOf([["backgroundColor", "#0066CC"], ["borderTopColor", "#0066CC"], ["borderRightColor", "#0066CC"], ["borderBottomColor", "#0066CC"], ["borderLeftColor", "#0066CC"]]))], ["type-text", padStyleMapOf(utsMapOf([["fontSize", 14], ["color", "#333333"]]))], ["type-text-active", padStyleMapOf(utsMapOf([["color", "#ffffff"]]))], ["adjust-quantity-section", padStyleMapOf(utsMapOf([["marginBottom", 16]]))], ["quantity-input-row", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"]]))], ["quantity-input", padStyleMapOf(utsMapOf([["flex", 1], ["height", 44], ["borderTopWidth", 1], ["borderRightWidth", 1], ["borderBottomWidth", 1], ["borderLeftWidth", 1], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#dddddd"], ["borderRightColor", "#dddddd"], ["borderBottomColor", "#dddddd"], ["borderLeftColor", "#dddddd"], ["borderTopLeftRadius", 8], ["borderTopRightRadius", 8], ["borderBottomRightRadius", 8], ["borderBottomLeftRadius", 8], ["paddingTop", 0], ["paddingRight", 12], ["paddingBottom", 0], ["paddingLeft", 12], ["fontSize", 16], ["color", "#333333"]]))], ["preview-section", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["alignItems", "center"], ["flexWrap", "wrap"], ["paddingTop", 12], ["paddingRight", 12], ["paddingBottom", 12], ["paddingLeft", 12], ["backgroundColor", "#f7f8fa"], ["borderTopLeftRadius", 8], ["borderTopRightRadius", 8], ["borderBottomRightRadius", 8], ["borderBottomLeftRadius", 8], ["marginBottom", 16]]))], ["preview-label", padStyleMapOf(utsMapOf([["fontSize", 13], ["color", "#666666"]]))], ["preview-value", padStyleMapOf(utsMapOf([["fontSize", 18], ["fontWeight", "700"], ["color", "#52c41a"], ["marginLeft", 8]]))], ["preview-value-low-stock", padStyleMapOf(utsMapOf([["color", "#faad14"]]))], ["preview-value-error", padStyleMapOf(utsMapOf([["color", "#ff4d4f"]]))], ["preview-error", padStyleMapOf(utsMapOf([["width", "100%"], ["fontSize", 12], ["color", "#ff4d4f"], ["marginTop", 4]]))], ["remark-section", padStyleMapOf(utsMapOf([["marginBottom", 8]]))], ["remark-input", padStyleMapOf(utsMapOf([["height", 44], ["borderTopWidth", 1], ["borderRightWidth", 1], ["borderBottomWidth", 1], ["borderLeftWidth", 1], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#dddddd"], ["borderRightColor", "#dddddd"], ["borderBottomColor", "#dddddd"], ["borderLeftColor", "#dddddd"], ["borderTopLeftRadius", 8], ["borderTopRightRadius", 8], ["borderBottomRightRadius", 8], ["borderBottomLeftRadius", 8], ["paddingTop", 0], ["paddingRight", 12], ["paddingBottom", 0], ["paddingLeft", 12], ["fontSize", 14], ["color", "#333333"]]))], ["modal-footer", padStyleMapOf(utsMapOf([["display", "flex"], ["flexDirection", "row"], ["paddingTop", 12], ["paddingRight", 16], ["paddingBottom", 16], ["paddingLeft", 16], ["borderTopWidth", 1], ["borderTopStyle", "solid"], ["borderTopColor", "#f5f5f5"]]))], ["cancel-btn", padStyleMapOf(utsMapOf([["flex", 1], ["height", 44], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"], ["borderTopWidth", 1], ["borderRightWidth", 1], ["borderBottomWidth", 1], ["borderLeftWidth", 1], ["borderTopStyle", "solid"], ["borderRightStyle", "solid"], ["borderBottomStyle", "solid"], ["borderLeftStyle", "solid"], ["borderTopColor", "#dddddd"], ["borderRightColor", "#dddddd"], ["borderBottomColor", "#dddddd"], ["borderLeftColor", "#dddddd"], ["borderTopLeftRadius", 22], ["borderTopRightRadius", 22], ["borderBottomRightRadius", 22], ["borderBottomLeftRadius", 22], ["marginRight", 12]]))], ["cancel-btn-text", padStyleMapOf(utsMapOf([["fontSize", 15], ["color", "#666666"]]))], ["confirm-btn", padStyleMapOf(utsMapOf([["flex", 1], ["height", 44], ["display", "flex"], ["alignItems", "center"], ["justifyContent", "center"], ["backgroundColor", "#0066CC"], ["borderTopLeftRadius", 22], ["borderTopRightRadius", 22], ["borderBottomRightRadius", 22], ["borderBottomLeftRadius", 22]]))], ["confirm-btn-disabled", padStyleMapOf(utsMapOf([["backgroundColor", "#cccccc"]]))], ["confirm-btn-text", padStyleMapOf(utsMapOf([["fontSize", 15], ["color", "#ffffff"]]))]])]
