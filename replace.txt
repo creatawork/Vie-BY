@@ -1,2 +1,0 @@
-﻿你的AccessKeyID==>REDACTED
-你的AccessKeySecret==>REDACTED
